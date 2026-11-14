@@ -55,11 +55,6 @@ class SimulationError(Exception):
     """A run finished but its result cannot be used."""
 
 
-# =============================================================================
-# Setup
-# =============================================================================
-
-
 def items(value):
     """Comma-separated list from the config; empty value = empty list."""
     return [x.strip() for x in value.split(",") if x.strip()]
@@ -68,7 +63,7 @@ def items(value):
 def load_config(path):
     """Read config.cfg into the nested structure the rest of the script uses."""
     cp = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=("#",))
-    cp.optionxform = str  # Keep key case as written.
+    cp.optionxform = str
     with open(path, encoding="utf-8") as f:
         cp.read_file(f)
 
@@ -149,7 +144,7 @@ def load_config(path):
 
 
 def setup_logging(log_file):
-    log.handlers.clear()  # One model after another: start each with fresh handlers.
+    log.handlers.clear()
     log.setLevel(logging.DEBUG)
     console = logging.StreamHandler(sys.stdout)
     console.setLevel(logging.INFO)
@@ -163,11 +158,6 @@ def setup_logging(log_file):
         log.addHandler(fh)
 
 
-# =============================================================================
-# Sampling
-# =============================================================================
-
-
 def unit_points(method, d, seed, n):
     """n points in [0, 1)^d."""
     if method == "lhs":
@@ -175,11 +165,6 @@ def unit_points(method, d, seed, n):
     if method == "sobol":
         return qmc.Sobol(d=d, scramble=True, seed=seed).random(n)
     return np.random.default_rng(seed).random((n, d))
-
-
-# Each distribution maps a unit-cube value u to a parameter value through its
-# inverse CDF, so Latin hypercube stratification carries over. All of them are
-# bounded by low and high (normal and lognormal are truncated there).
 
 
 def _truncated_normal(u, mean, std, lo, hi):
@@ -215,16 +200,13 @@ def _lognormal(u, p):
 
 
 DISTRIBUTIONS = {
-    "uniform": _uniform,  # low, high
-    "loguniform": _loguniform,  # low, high
-    "triangular": _triangular,  # low, mode, high
-    "normal": _normal,  # mean, std; truncated to [low, high]
-    "lognormal": _lognormal,  # median, sigma_log10; truncated to [low, high]
+    "uniform": _uniform,
+    "loguniform": _loguniform,
+    "triangular": _triangular,
+    "normal": _normal,
+    "lognormal": _lognormal,
 }
 
-# Parameters that are not sampled and use no dimension of the unit cube:
-#   constant      value
-#   proportional  to, base, base_to: value = sample[to] * base / base_to
 COMPUTED = ("constant", "proportional")
 
 
@@ -255,7 +237,7 @@ def derive(s, cfg):
     m = cfg["model"]
     d = {}
 
-    pore_volume = m["volume_m3"] * s["porosity"] * 1000.0  # L
+    pore_volume = m["volume_m3"] * s["porosity"] * 1000.0
     d["water_volume_L"] = pore_volume * s["water_fraction"]
     d["gas_volume_L"] = pore_volume - d["water_volume_L"]
 
@@ -267,7 +249,6 @@ def derive(s, cfg):
         - m["h2_pressure_atm"]
     )
 
-    # Volume fraction of the solid for each mineral, optionally scaled to sum to 1.
     fractions = {mn["name"]: s[mn["fraction_parameter"]] for mn in cfg["minerals"]}
     if m["normalize_mineral_fractions"]:
         total = sum(fractions.values())
@@ -330,11 +311,7 @@ def end_days(template):
     )
 
 
-# =============================================================================
-# Worker side
-# =============================================================================
-
-_W = {}  # Per-process settings, set once by init_worker.
+_W = {}
 
 
 def init_worker(settings):
@@ -403,8 +380,6 @@ def quality_issues(col, data):
     if negative:
         issues.append(f"negative values in {', '.join(negative)}")
 
-    # Absolute change: kinetic reactants often start at an arbitrary -m 1,
-    # so real progress can be tiny relative to the value.
     unchanged = [
         c
         for c in chk["must_change"]
@@ -454,7 +429,7 @@ def work(task):
     except SimulationError as e:
         res["status"] = "timeout" if str(e).startswith("timeout") else "failed"
         res["message"] = str(e)
-    except Exception as e:
+    except (OSError, ValueError, KeyError, IndexError) as e:
         res["status"], res["message"] = "failed", f"{type(e).__name__}: {e}"
         if _W["debug"]:
             (Path(_W["run_dir"]) / "logs" / f"{tag}_traceback.txt").write_text(
@@ -490,11 +465,6 @@ def plot_run(sim_id, col, data, path):
     plt.close(fig)
 
 
-# =============================================================================
-# Result files
-# =============================================================================
-
-
 def write_input(path, reps, keys):
     """Same layout as the original script: one '{PLACEHOLDER} value' line each."""
     path.write_text("".join(f"{k} {reps[k]}\n" for k in keys), encoding="utf-8")
@@ -522,11 +492,6 @@ def save_result(run_dir, task, res, cfg, usable):
             run_dir / "input" / f"{tag}_input.txt",
             run_dir / "failed" / f"{tag}_input.txt",
         )
-
-
-# =============================================================================
-# Report
-# =============================================================================
 
 
 def write_report(run_dir, cfg, meta, records, n_planned):
@@ -598,11 +563,6 @@ def write_report(run_dir, cfg, meta, records, n_planned):
     (run_dir / "report.txt").write_text("\n".join(out) + "\n", encoding="utf-8")
 
 
-# =============================================================================
-# Main
-# =============================================================================
-
-
 MODELS_DIR = Path(__file__).resolve().parent / "models"
 
 
@@ -617,7 +577,6 @@ def run_model(model_dir, cfg):
         seed = int(np.random.SeedSequence().entropy % 2**32)
     n = run["n_simulations"]
 
-    # All samples are drawn up front in this process from one seed.
     rows = []
     for i, u in enumerate(
         unit_points(cfg["sampling"]["method"], len(sampled(cfg)), seed, n), 1
@@ -667,8 +626,6 @@ def run_model(model_dir, cfg):
         ("success", "flagged") if cfg["output"]["include_flagged"] else ("success",)
     )
 
-    # Every input file is written before anything runs, so the whole sample set
-    # from this seed is on disk from the start.
     tasks = [
         {
             "sim_id": r["sim_id"],
@@ -684,10 +641,9 @@ def run_model(model_dir, cfg):
             cfg["output"]["input_file"],
         )
     log.info("Wrote %d input files to %s", n, run_dir / "input")
-    write_report(run_dir, cfg, meta, [], n)  # Seed and settings on disk from the start.
+    write_report(run_dir, cfg, meta, [], n)
 
     if run["smoke_test"]:
-        # The median of every parameter distribution, run once before the batch.
         s = scale([0.5] * len(sampled(cfg)), cfg)
         init_worker(settings)
         log.info("Smoke test: running the median of every parameter...")
