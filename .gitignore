@@ -3,3 +3,9 @@
 *.tmp
 *.log
 .DS_Store
+
+# Run folders created by datagen.py
+/models/*/runs/
+
+# Python bytecode cache
+__pycache__/
