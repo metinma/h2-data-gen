@@ -1,0 +1,880 @@
+#TITLE Sandstone
+# for  a sandstone here I consider 80 % quartz , 6 % calcite, 3 % pyrite, 3 % barite, 2 % illite, 2 % kaolinite, 2 % hematite, 2 % albite
+# this is an additional scenario with biomass growth, in Mura's experiments there is no biomass
+# sensitive to calcite and barite mineral amount but particularly surface areas, I calculated moles and surface areas based on A_geom=6/d_i*mass_i/density_i then calculate real reactive surface area roughly  A_react = f*A_geom in which f is fraction of 0.001
+#quartz 200 µm/2650; calcite 100 µm/2710; pyrite 10 µm/5000; barite 10 µm/4500; illite 1 µm/2700
+# new minerals
+# Kaolinite density  = 2620 kg/m³  grain diameter 1 µm
+# Hematite density  = 5260 kg/m³    grain diameter 10 µm
+# Albite density ˜= 2620 kg/m³     grain diameter 200 µm
+#	Quartz d=200" 					" µm, density=2650" 					" kg" " m^(-3)
+#	Calcite d=100" 					" µm, density=2710" 					" kg" " m^(-3)
+#	Pyrite d=10" 					" µm, density=5000" 					" kg" " m^(-3)
+#	Barite d=10" 					" µm, density=4500" 					" kg" " m^(-3)
+#	illite d=1" 		                	" µm, density=2700" 					" kg" " m^(-3)
+# This gives the initial moles and surface areas (scales linearly with M_"rock" and inversely with d_i):
+#############################################
+# 0) Extend database for acetate & formate
+#############################################
+SOLUTION_MASTER_SPECIES # we need to define Acetate and Formate which are not exist in the database
+# basic element name(example"S"); master (primary) species of that element (example"SO4-2"); moles; master element formula; molecular weight of basic element (example "S" = 32.06 g/mol)
+ Formate Formate- 1 HCOO 45.017 # HCOO-
+ Acetate Acetate- 1 CH3COO 59.044 # CH3COO-
+SOLUTION_SPECIES
+ Formate- = Formate-
+  log_k 0 # equilibrium reaction constant
+ Formate- + H+ = FormateH
+  log_k 3.75 # equilibrium reaction constant
+ Acetate- = Acetate-
+  log_k 0 # equilibrium reaction constant
+ Acetate- + H+ = AcetateH
+  log_k 4.76 # equilibrium reaction constant
+##############################################
+# 1) Aqueous solutions REV representative element volume assumption 1 m^3 of block, porosity 0.15, 100 L water 50 L gas (changeable) change porosity between 0.1 to 0.3
+SOLUTION 1
+ temp {TEMPERATURE}
+ units mol/kgw
+# pH 6.9
+  Alkalinity {HCO3} as HCO3
+  Na {NA}
+  K {K}
+  Mg {MG}
+  Cl {CL}
+  Ca {CA}
+  S(6) {S(6)}
+ Acetate 0
+ Formate 0
+ Fe(2) 6.5e-6  # trace total Fe as Fe(II)
+ N(-3) 1e-5 as NH4      #  ammonium (required for biomass reactions)
+ -water {WATER_VOLUME}  # change porosity between 0.1 to 0.3, if porsity 0.15 then in 1 m^3 100 L water 50 L gas
+##############################################
+# 2) Gaseous phases mixing
+# constructed at 60 bar (59.2 atm) 36°C
+# We use Mtg(g) for methane. inert
+# Partitioning will occur  during KINETICS
+GAS_PHASE 1 # REV representative element volume assumption 1 m^3 of block, porosity 0.15, 100 L water 50 L gas (changeable) change porosity between 0.1 to 0.3
+ -fixed_pressure  # reservoir condition keep pressure constant
+ -volume {GAS_VOLUME} # change based on porosity between 0.1 to 0.3
+ -temperature {TEMPERATURE}
+ -pressure 60
+ # Use reasonable "initial guesses". Partial pressures mol fraction of H2 always 2 %, use n = PV/(RT), from total P = 60 bars
+
+  Hdg(g)  1.1843 # hydrogen molar fraction always 2 %
+  Mtg(g)  {CH4}  # methane
+  CO2(g)  {CO2} # Carbondioxide
+  Ntg(g)  {N2} # nitrogen
+ H2S(g)   {H2S} # hydrogen sulphate # if you assume dry conditions and if you assign water small like 0.1, then you can make H2S(g) blind, otherwise pH is small and do not converge
+
+ ##############################################
+# 3) Equilibrium for reactive inventory
+  #Stoichiometry iron reduction:
+#Fe(OH)3(s) + 0.5 H2 + 2 H+ Fe(2) + 3 H2O
+EQUILIBRIUM_PHASES 1
+# dissolve_only = prevents precipitation of Fe(OH)3(a)
+ Fe(OH)3(a) 0 5e-5  precipitate_only # 0 is saturation index (SI) and 5e-5 mol ferrihydrite available (keep this as it is)
+# If we want Fe(OH)3(a) to behave as a finite reactive inventory that microbes consume, then to prevent PHREEQC from using that phase as an equilibrium buffer (dissolving/precipitating to reach the target SI). The best setting for our “inventory-only” intent is: precipitate_only (so it cannot dissolve to buffer the solution)
+# and then we rely on our microbial kinetic reactions to consume the inventory
+
+#############################################
+# 4) KINETICS
+
+# ====================== KINETIC REACTIONS  =====================
+KINETICS 1
+ # Biomass (stoichiometric) Biomass =2.5Acetate- + 2.5HCO3- +1NH4+ + 4H+
+    # Forward reaction = decay (releases acetate/DIC/NH4/H+)
+    # Reverse reaction = growth (other way round consumes them)
+# --- Suffate-reducing Biomass SRB biomass state variable (initial seeding)
+  X_SRB
+    -m 1e-8
+   # -formula H 0
+    -formula Acetate- 2.5  HCO3- 2.5  NH4+ 1.0  H+ 4.0
+ # --- H2-based iron reduction (consumes ferrihydrite) ---
+  IR_H2
+    -m 1e-8
+    -formula Fe(OH)3(a) -1 Hdg -0.5 H+ -2 Fe+2 1 H2O 3
+
+# Iron-reducing biomass X_IRB with growth/decay
+X_IRB
+    -m 1e-8
+  # -formula H 0
+ -formula Acetate- 2.5  HCO3- 2.5  NH4+ 1.0  H+ 4.0
+
+ # --- Acetate-based Fe(III) reduction (consumes ferrihydrite) ---
+  IR_AC
+    -m 1e-8
+    -formula Fe(OH)3(a) -8  Acetate- -1  H+ -15  Fe+2 8  HCO3- 2  H2O 20
+
+  # --- Formate-based Fe(III) reduction (consumes ferrihydrite) ---
+  IR_FOR
+    -m 1e-8
+    -formula Fe(OH)3(a) -2  Formate- -1  H+ -4  Fe+2 2  HCO3- 1  H2O 5
+
+
+
+
+  # Sulfate reduction on acetate
+  SR_AC
+    -m 1
+    # CH3COO- + SO4-- -> HS- + 2 HCO3-
+    -formula SO4-2 -1 Acetate- -1 HS- 1 HCO3- 2
+
+  # Sulfate reduction on formate (overall: 4 HCOO- + SO4-- + 3 H+ -> HS- + 4 HCO3-)
+  SR_FOR
+    -m 1
+    -formula SO4-2 -1 Formate- -4 HS- 1 HCO3- 4 H+ -3
+
+  # Acetoclastic methanogenesis (active mainly after SO4 falls)
+  ACETO_METH
+    -m 1
+    # CH3COO- + H+ -> CH4(g) + HCO3-
+    -formula Acetate- -1 H+ -1 Mtg(g) 1 HCO3- 1
+
+  #  Formate <-> H2 (tunable reversible coupling)
+
+  FORMATE_H2_EQ
+    -m 1
+    # Balanced forward reaction: Formate- + H2O -> Hdg + HCO3-
+    -formula Formate- -1 Hdg 1 HCO3- 1 H2O -1
+
+
+# REDOX ==========================================================================
+
+ SR_H2
+  -m 1
+  -formula SO4-2 -1
+  -formula Hdg -4
+  -formula CO2 -1.93
+  -formula H2S 0.93
+  -formula HS- 0.07
+  -formula HCO3- 1.93
+  -formula H2O 2.07
+ ACETO_H2
+  -m 1
+  -formula CO2 -1
+  -formula HCO3- -1
+  -formula Hdg -4
+  -formula Acetate- 1
+  -formula H2O 3
+ FORMATE_H2
+  -m 1
+  -formula HCO3- -1
+  -formula Hdg -1
+  -formula Formate- 1
+  -formula H2O 1
+ METH_H2
+  -m 1
+  -formula CO2 -1
+  -formula Hdg -4
+  -formula Mtg(g) 1  # CH4 ? CH4(g)
+  -formula H2O 2
+
+ #  minerals based on the information of sandstone -------------------------------------------------------------------
+ # ---- Mineral kinetics: 1 m3 REV (Representative elementary volume), phi=0.15, Vw=100 L, geometric surface area multiplied with reactive fraction fr=1e-3
+ # change moles, surface areas and water volume based on the porosity
+Quartz
+    -formula SiO2 1
+    -m0    {QUARTZ_MOLES} # initial moles
+    -parms {QUARTZ_AREA} {WATER_VOLUME} # first row: A0 (initial surface of calcite (m2)); second row: V, solution volume in contact with A0 (liter), the solution volume (L)
+
+  Calcite
+    -formula CaCO3 1
+    -m0    {CALCITE_MOLES}
+    -parms {CALCITE_AREA} {WATER_VOLUME}
+
+  Pyrite
+    -formula Fe 1 S 2
+    -m0    {PYRITE_MOLES}
+    -parms {PYRITE_AREA} {WATER_VOLUME}
+
+  Barite
+    -formula BaSO4 1
+    -m0    {BARITE_MOLES}
+    -parms {BARITE_AREA} {WATER_VOLUME}
+
+ Illite
+   -formula K 0.60 Al 1.30 Mg 0.30 Fe 0.10 Si 3.50 O 10 H 2
+   -m0    {ILLITE_MOLES}
+   -parms {ILLITE_AREA} {WATER_VOLUME}
+
+ Hematite
+ -formula   Fe2O3  #
+ -m0  {HEMATITE_MOLES} # initial moles of hematite
+ -parms {HEMATITE_AREA}  {WATER_VOLUME}     # first row: A0 (initial surface of calcite (m2)); second row: V, solution volume in contact with A0 (liter), the solution volume (L)
+
+  Kaolinite
+  -formula Al2Si2O5(OH)4 1
+-m0 {KAOLINITE_MOLES}
+-parms {KAOLINITE_AREA} {WATER_VOLUME}
+
+  Albite
+-formula NaAlSi3O8
+ -m0  {ALBITE_MOLES}
+ -parms {ALBITE_AREA}  {WATER_VOLUME}
+
+# numerical solver ----------------------------------
+ -cvode true  # that can be Runge Kutta based on the stiffness of the problem
+ -tol 1e-8 # relative tolerance enough can be decreased
+ -steps 15552000 in 300 # 6 months of period  --- if you need stiff calculation for ODE, but this one is optimal for the moment
+INCREMENTAL_REACTIONS true # this one helps convergence at each time step for equilibrium for the reaction kinetics
+#############################################
+# RATES
+
+RATES 1
+# --- SRB biomass growth/decay driven by SR catabolism ---
+# for dummy reactions ------------------------------------------------
+# X_SRB
+# -start
+# # Yield Y_X/S in mol biomass produced per mole of SR "reaction progress".
+# # Decay b in d^-1 (first-order endogenous decay).
+# 10  Y  = 0.05      #
+# 20  b  = 0.02      # d^-1
+# 30  day2s = 86400.0
+# 40  X  = KIN("X_SRB")
+# # Collect catabolic rates from SR modules (mol/s)
+# 50  r_SR_H2 = GET(101)   # from SR_H2 PUT
+# 60  r_SR_AC = GET(102)   # from SR_AC PUT
+# 70  r_SR_FOR= GET(103)   # from SR_FOR PUT
+# 80  r_cat   = r_SR_H2 + r_SR_AC + r_SR_FOR  # mol/s
+# # Net biomass production rate (mol/s); negative SAVE adds biomass
+# 90  growth = Y * r_cat
+# 100 decay  = (b/day2s) * X
+# 110 net    = growth - decay
+# # Integrate over the time step; prevent negative biomass
+# 120 moles = - net * TIME
+# 130 IF (X + (-moles) < 0) THEN moles = X
+# 140 SAVE moles
+# -end
+
+X_SRB
+-start
+    10  Y = 0.05 # Yield Y_X/S in mol biomass produced per mole of SR "reaction progress".
+    20  b = 0.01 # Decay b in d^-1 (first-order endogenous decay)
+    30  day2s = 86400
+    40  X = KIN("X_SRB")
+    50  vL = SOLN_VOL
+    # Catabolic rate signals from SR modules (mol/s)
+    60  r_SR_H2  = GET(101)
+    70  r_SR_AC  = GET(102)
+    80  r_SR_FOR = GET(103)
+    90  r_cat = r_SR_H2 + r_SR_AC + r_SR_FOR
+    # Growth/decay in mol biomass / s
+    100 growth = Y * r_cat
+    110 decay  = (b/day2s) * X
+    120 net    = growth - decay
+    # moles saved: negative increases biomass (reverse reaction = growth)
+    130 moles = -net * TIME
+    # Prevent negative biomass
+    140 IF (X + (-moles) < 0) THEN moles = X
+    # If biomass is growing (moles < 0), limit by nutrient availability
+    150 IF (moles < 0) THEN GOTO 200
+    160 SAVE moles
+    170 END
+    200 ac   = MOL("Acetate-")
+    210 dic  = MOL("HCO3-") + MOL("CO2")
+    220 nh4  = MOL("NH4+")
+    # Biomass = 2.5 Acetate- + 2.5 DIC + 1 NH4+
+    # Growth consumes: 2.5 Acetate-, 2.5 DIC, 1 NH4+, 4 H+ per mol biomass
+    # Convert molalities to moles in solution volume vL
+    # Available acetate limits biomass to
+    230 lim_ac  = (ac  * vL) / 2.5
+    240 lim_dic = (dic * vL) / 2.5
+    250 lim_nh4 = (nh4 * vL) / 1.0
+    # kinetics do not automatically enforce mass-balance safety for reactants in phreeqc therefore you we must do it ourself
+    #lim means that the maximum number of moles that are allowed to react during current time step based on mass availability and stoichiometry
+    # we multiply with 0.9 because,  0.9 is 90 % consumtion and avoding to consume 100 %, if we multiply with 1, a reactant consumed totaly in one time step in that case the concentrations drop to zero leading activities can become undefined charge balance or pH calculations can fail, CVODE may refuse the step
+    260 lim = 0.9 * MIN(lim_ac, lim_dic)
+    270 lim = 0.9 * MIN(lim, lim_nh4)
+    280 IF ((-moles) > lim) THEN moles = -lim
+    290 SAVE moles
+-end
+
+
+IR_H2
+-start
+# Monod parameters (tune to your dataset/system)
+10  Kmax = 0.015      # d^-1 or mol/mol_X/d, depending on coupling
+20  KH2  = 1.0e-4     # mol/kgw
+30  KIHS = 1.0e-3     # mol/kgw  (sulfide inhibition)
+40  day2s= 86400
+# State
+50  vL   = SOLN_VOL
+60  h2   = MOL("Hdg")
+70  h2s   = MOL("H2S") #MOL("HS-") more mechanistic alternative is inhibiting on H2S(aq)
+80  mFe  = EQUI("Fe(OH)3(a)")   # available ferrihydrite (mol)
+90  IF (mFe <= 0) THEN GOTO 900
+#  biomass coupling for iron reducers:
+100 x = KIN("X_IRB")
+# Monod + inhibition
+110 mH2 = h2/(KH2 + h2)
+120 finh = KIHS/(KIHS + h2s)
+
+# Base specific rate
+130 rate_c = (Kmax/day2s) * mH2 * finh
+#  couple to biomass (uncomment if using X_IRB)
+140 rate_c = rate_c * x
+# Moles per step and stoichiometric/availability limits
+150 r_mols = rate_c * vL           # mol/s
+160 # Fe(OH)3 stoichiometry is 1 mol per "moles" of reaction
+170 lim = 0.9 * mFe
+180 moles = r_mols * TIME
+190 IF (moles > lim) THEN moles = lim
+# Expose catabolic rate if you plan to grow X_IRB from this:
+191 r_exec = moles / TIME
+192 PUT(r_exec, 201)
+200 SAVE moles
+900 moles = 0
+910 SAVE moles
+-end
+
+
+IR_AC
+-start
+# Kinetics: acetate + Fe(OH)3(a)
+10  Kmax = 0.02        # d^-1 (tune)
+20  KAc  = 1.0e-3      # mol/kgw, half-sat for acetate (tune)
+30  KIHS = 1.0e-3      # mol/kgw, sulfide inhibition (tune)
+40  day2s= 86400
+# State
+50  vL   = SOLN_VOL
+60  ac   = MOL("Acetate-")
+70  hs   = MOL("HS-")
+80  mFe  = EQUI("Fe(OH)3(a)")
+90  IF (mFe <= 0) THEN GOTO 900
+#  biomass coupling (iron reducers)
+100 x = KIN("X_IRB")     # uncomment if you defined X_IRB
+# Monod + inhibition
+110 mAc  = ac /(KAc + ac)
+120 finh = KIHS/(KIHS + hs)
+# Specific rate (mol/kgw/s)
+130 rate_c = (Kmax/day2s) * mAc * finh
+# : multiply by biomass amount
+140 rate_c = rate_c * x
+# Convert to mol/s and apply stoich/availability limits
+150 r_mols = rate_c * vL
+160 # Stoich: 1 Acetate and 8 Fe(OH)3 per 1 "moles" of reaction
+170 lim = 0.9 * MIN(ac*vL/1.0, mFe/8.0)
+180 moles = r_mols * TIME
+190 IF (moles > lim) THEN moles = lim
+# expose catabolic rate for biomass growth (see X_IRB block)
+191 r_exec = moles / TIME
+192 PUT(r_exec, 202)
+200 SAVE moles
+900 moles = 0
+910 SAVE moles
+-end
+
+IR_FOR
+-start
+# Kinetics: formate + Fe(OH)3(a)
+10  Kmax = 0.02        # d^-1 (tune)
+20  KFo  = 1.0e-3      # mol/kgw, half-sat for formate (tune)
+30  KIHS = 1.0e-3      # mol/kgw
+40  day2s= 86400
+# State
+50  vL   = SOLN_VOL
+60  fo   = MOL("Formate-")
+70  hs   = MOL("HS-")
+80  mFe  = EQUI("Fe(OH)3(a)")
+90  IF (mFe <= 0) THEN GOTO 900
+# Optional biomass coupling
+100 x = KIN("X_IRB")     # uncomment if you defined X_IRB
+# Monod + inhibition
+110 mFo  = fo /(KFo + fo)
+120 finh = KIHS/(KIHS + hs)
+# Specific rate (mol/kgw/s)
+130 rate_c = (Kmax/day2s) * mFo * finh
+#  multiply by biomass amount
+140 rate_c = rate_c * x
+# Convert to mol/s and apply stoich/availability limits
+150 r_mols = rate_c * vL
+160 # Stoich: 1 Formate and 2 Fe(OH)3 per 1 "moles" of reaction
+170 lim = 0.9 * MIN(fo*vL/1.0, mFe/2.0)
+180 moles = r_mols * TIME
+190 IF (moles > lim) THEN moles = lim
+#  expose catabolic rate
+191 r_exec = moles / TIME
+192 PUT(r_exec, 203)
+200 SAVE moles
+900 moles = 0
+910 SAVE moles
+-end
+
+# X_IRB
+# -start
+# 10  Y  = 0.03      # mol biomass per mol Fe(III) reduced
+# 20  b  = 0.01      # d^-1 decay (tune)
+# 30  day2s = 86400
+# 40  X  = KIN("X_IRB")
+# # consume IR_H2 catabolic rate (and add others IR_AC/IR_FOR)
+# 50 r_IR_H2 = GET(201)
+# 51 r_IR_AC = GET(202)
+# 52 r_IR_FOR= GET(203)
+# 53 r_IR = r_IR_H2 + r_IR_AC + r_IR_FOR
+# 60  growth = Y * r_IR
+# 70  decay  = (b/day2s) * X
+# 80  net = growth - decay
+# 90  moles = - net * TIME
+# 100 IF (X + (-moles) < 0) THEN moles = X
+# 110 SAVE moles
+# -end
+
+X_IRB  # iron reduced biomass
+-start
+    10  Y = 0.03 # mol biomass per mol Fe(III) reduced
+    20  b = 0.02 # d^-1 decay
+    30  day2s = 86400
+    40  X  = KIN("X_IRB")
+    50  vL = SOLN_VOL
+# consume IR_H2 catabolic rate (and add others IR_AC/IR_FOR)
+    60  r_IR_H2  = GET(201)
+    70  r_IR_AC  = GET(202)
+    80  r_IR_FOR = GET(203)
+    90  r_cat = r_IR_H2 + r_IR_AC + r_IR_FOR
+        # Growth/decay in mol biomass / s
+    100 growth = Y * r_cat
+    110 decay  = (b/day2s) * X
+    120 net    = growth - decay
+    # moles saved: negative increases biomass (reverse reaction = growth)
+    130 moles = - net * TIME
+   # Prevent negative biomass
+    140 IF (X + (- moles) < 0) THEN moles = X
+    # If biomass is growing (moles < 0), limit by nutrient availability
+    150 IF (moles < 0) THEN GOTO 200
+    160 SAVE moles
+   170 END
+    200 ac   = MOL("Acetate-")
+    210 dic  = MOL("HCO3-") + MOL("CO2")
+    220 nh4  = MOL("NH4+")
+ # Growth consumes: 2.5 Acetate-, 2.5 DIC, 1 NH4+, 4 H+ per mol biomass
+    # Convert molalities to moles in solution volume vL
+    230 lim_ac  = (ac  * vL) / 2.5
+    240 lim_dic = (dic * vL) / 2.5
+    250 lim_nh4 = (nh4 * vL) / 1.0
+    260 lim = 0.9 * MIN(lim_ac, lim_dic)
+    270 lim = 0.9 * MIN(lim, lim_nh4)
+    280 IF ((-moles) > lim) THEN moles = -lim
+    290 SAVE moles
+-end
+
+
+# ---- SR on Acetate ----
+
+SR_AC
+-start
+# Kinetic parameters ( p_fit). Units: K in d^-1; half-sats in mol/kgw
+10 K     = 0.015      # Max specific rate for SR using acetate (per day) can be 1.55 1/d
+20 KAc   = 1.5e-3      # Half-saturation for acetate (Monod denominator)
+30 KSO4  = 1.5e-3      # Half-saturation for sulfate (Monod denominator)
+40 KI_HS = 1e-3      # HS- (sulfide) inhibition constant; lower => stronger inhibition
+# Convenience state variables
+50 vL = SOLN_VOL     # Solution "volume" scaling (L/kgw) for converting rates to moles
+60 ac = MOL("Acetate-")  # Aqueous acetate molality (mol/kgw)
+70 so4 = MOL("SO4-2")    # Total sulfate-S (mol/kgw) ~ sulfate molality for this system
+80 hs = MOL("HS-")       # Aqueous bisulfide; inhibition proxy for sulfide toxicity
+# Monod terms & inhibition
+90  mAc  = ac /(KAc + ac)         # Saturation with respect to acetate
+100 mSO4 = so4/(KSO4+ so4)        # Saturation with respect to sulfate
+110 finh = KI_HS/(KI_HS + hs)     # Inhibition factor (0..1) that decreases as HS- grows
+# --- NEW: biomass multiplier (moles of kinetic reactant X_SRB) ---
+115 x = KIN("X_SRB")   # SRB biomass state variable (Example 15 pattern)
+# Rate (mol/kgw/s) = (K/day)/86400 × Monod(Ac) × Monod(SO4) × inhibition
+120 rate_c = (K/86400)*mAc*mSO4*finh*x
+# Convert to moles in this step: multiply by solution volume & elapsed time
+130 moles  = rate_c*vL*TIME
+# Stoichiometric safety: cannot consume more acetate than present nor more sulfate than present
+140 lim = 0.9*MIN(ac*vL, so4*vL)  # 0.9 leaves a small cushion for numerics
+150 IF (moles > lim) THEN moles = lim
+#  expose catabolic progress (mol/s) to biomass block
+155 r_mols = rate_c * vL   # mol/s (before multiplying by TIME)
+160 moles = r_mols*TIME
+170 IF (moles > lim) THEN moles = lim
+175 r_exec = moles / TIME
+#  expose catabolic progress (mol/s) to biomass block
+176 PUT(r_exec, 102)
+180 SAVE moles
+-end
+# ---- SR on Formate ----
+
+SR_FOR
+-start
+# Kinetic parameters (p_fit). K in d^-1
+10 K     = 0.008     # Max specific rate for SR using formate     can be 1.55 1/d
+20 KFo   = 1e-3      # Half-saturation for formate
+30 KSO4  = 1e-3      # Half-saturation for sulfate
+40 KI_HS = 1e-3      # HS- inhibition constant
+# State variables
+50 vL = SOLN_VOL
+60 fo = MOL("Formate-")  # Formate molality (mol/kgw)
+70 so4 = MOL("SO4-2")     # Total sulfate-S (mol/kgw)
+80 hs = MOL("HS-")       # Inhibitor
+# Monod saturation terms & inhibition
+90  mFo  = fo /(KFo + fo)
+100 mSO4 = so4/(KSO4+ so4)
+110 finh = KI_HS/(KI_HS + hs)
+# --- NEW: biomass multiplier (moles of kinetic reactant X_SRB) ---
+115 x = KIN("X_SRB")   # SRB biomass state variable (Example 15 pattern)
+# Core kinetic rate (mol/kgw/s)
+120 rate_c = (K/86400)*mFo*mSO4*finh*x
+# Integrate to moles in current step
+130 moles  = rate_c*vL*TIME
+# Stoichiometric limit: SR_FOR consumes 4 mol formate per 1 mol sulfate-reduced
+140 lim = 0.9*MIN((fo*vL)/4.0, (so4*vL))
+150 IF (moles > lim) THEN moles = lim
+# --- NEW: expose catabolic progress (mol/s) to biomass block
+155 r_mols = rate_c * vL   # mol/s (before multiplying by TIME)
+160 moles = r_mols*TIME
+170 IF (moles > lim) THEN moles = lim
+175 r_exec = moles / TIME
+#  expose catabolic progress (mol/s) to biomass block
+176 PUT(r_exec, 103)
+180 SAVE moles
+-end
+
+
+# ---- Acetoclastic Methanogenesis ----
+
+ACETO_METH
+-start
+# Kinetic parameters (p_fit from MATLAB)
+10 K      = 0.05     # d^-1; max rate of acetate -> CH4 + HCO3-     can be 1.55 1/d
+20 KAc    = 5e-4     # Half-saturation for acetate (note: lower than in SR_AC)
+30 KI_SO4 = 5e-5     # Inhibition by SO4 while present (suppresses acetoclastic during SR)
+40 KI_HS  = 1e-3     # HS- inhibition (general toxicity)
+# State variables
+50 vL = SOLN_VOL
+60 ac  = MOL("Acetate-")
+70 so4 = TOT("S(6)")
+80 hs  = MOL("HS-")
+# Saturation and combined inhibition (both sulfate and sulfide)
+90  mAc  = ac/(KAc + ac)
+100 finh = (KI_SO4/(KI_SO4 + so4)) * (KI_HS/(KI_HS + hs))
+# Rate (mol/kgw/s)
+110 rate_c = (K/86400) * mAc * finh
+# Moles advanced
+120 moles  = rate_c*vL*TIME
+# Stoichiometry: cannot consume more acetate than present
+130 lim = 0.9*ac*vL
+140 IF (moles > lim) THEN moles = lim
+150 SAVE moles
+-end
+
+# ---- Reversible Formate <-> H2 shuttle (simple linear mass-action) ----
+# Here we treat net production as: H2 -> Formate- + H+ - HCO3- (and reverse via kb)
+# This keeps charge/alkalinity balanced through H+, HCO3-
+
+FORMATE_H2_EQ
+-start
+# p_fit shuttle rates from MATLAB (per day). When kb > kf and H2 is high, net goes H2 -> Formate-.
+10 kf = 0.03     # Formate- -> H2 + HCO3- this part important for trend adjustment
+20 kb = 0.03    # H2 -> Formate-     this part important for trend adjustment
+30 vL   = SOLN_VOL
+# State variables
+40 fo   = MOL("Formate-")    # Formate- molality
+50 h2aq = MOL("Hdg")        # Dissolved H2 (mol/kgw)
+55 hs   = MOL("HS-")        # Inhibitor
+56 KI_HS= 1e-3
+57 finh = KI_HS/(KI_HS + hs)
+60 t    = TOTAL_TIME
+# Net mass-action rate (mol/kgw/s). Positive => FO -> H2; Negative => H2 -> FO.
+70 rate_c = ((kf*fo) - (kb*h2aq))/86400.0 * finh
+# Convert to moles this step
+80 moles  = rate_c*vL*TIME
+# Clamps: avoid over-consuming either FO or H2 in a single step
+90 IF (moles > 0 AND moles > 0.9*fo*vL)    THEN moles = 0.9*fo*vL
+95 IF (moles < 0 AND -moles > 0.9*h2aq*vL) THEN moles = -0.9*h2aq*vL
+100 SAVE moles
+-end
+
+# ==========================================================================
+# Sulfate reducrion on H2 including biomass growth
+
+SR_H2
+-start
+10 K = 0.02      # d^-1; your existing value
+20 KH2 = 5.0e-4  # ...
+30 KSO4 = 1.0e-4
+40 KI_HS= 2e-4
+50 day2s = 86400
+60 vL = SOLN_VOL
+70 h2 = MOL("Hdg")
+80 so4 = TOT("S(6)")
+90 hs = MOL("HS-")
+#  biomass multiplier (moles of kinetic reactant X_SRB) ---
+95 x = KIN("X_SRB") / SOLN_VOL   # mol/L biomass   # SRB biomass state variable
+96 t = TOTAL_TIME
+97 ramp = t/(1*86400)
+98 IF (ramp > 1) THEN ramp = 1
+100 mH2 = h2 /(KH2 + h2)
+110 mSO4 = so4/(KSO4+ so4)
+120 finh = KI_HS/(KI_HS + hs)
+# --- base specific rate (mol/kgw/s); now multiply by biomass amount x ---
+130 rate_c = (K/day2s) * mH2 * mSO4 * finh * ramp
+131 rate_c = rate_c * x
+# convert to moles this step
+140 r_mols = rate_c * vL
+150 lim = 0.9*MIN((h2*vL)/4.0, (so4*vL))
+160 moles = r_mols * TIME
+170 IF (moles > lim) THEN moles = lim
+175 r_exec = moles / TIME
+#  expose catabolic progress (mol/s) to biomass block
+176 PUT(r_exec, 101)
+200 SAVE moles
+
+200 SAVE moles
+-end
+
+# 2) Acetogenesis
+# CO2 + HCO3- + 4 H2 -> Ac- + 3 H2O
+
+
+ACETO_H2
+-start
+# p_fit from MATLAB: homoacetogenesis from H2 + DIC
+10 K    = 0.20      # d^-1; relatively fast (acetate)
+20 KH2  = 0.0015    # H2 half-saturation
+30 KDIC = 0.0040    # DIC (CO2 + HCO3-) half-saturation
+40 KI_HS= 0.0015    # HS- inhibition
+# Helpers
+50 day2s= 86400
+60 vL = SOLN_VOL
+# State
+70 h2  = MOL("Hdg")
+80 dic = MOL("CO2") + MOL("HCO3-")
+90 hs  = MOL("HS-")
+# Monod + inhibition
+100 mH2  = h2 /(KH2 + h2)
+110 mDIC = dic/(KDIC+ dic)
+120 finh = KI_HS/(KI_HS + hs)
+# Rate (mol/kgw/s)
+130 rate_c = (K/day2s) * mH2 * mDIC * finh
+# Moles reacted this step
+140 r_mols = rate_c * vL
+141 h2_1 = (h2 * vL) / 4.0
+142 dic_1 = (dic * vL)
+# Stoichiometric limitation: 4 H2 per 1 Acetate; also limited by DIC
+150 lim = 0.9 * MIN(h2_1,dic_1)
+160 moles = r_mols*TIME
+170 IF (moles > lim) THEN moles = lim
+180 SAVE moles
+-end
+
+
+
+# 3) Formate formation
+# HCO3- + H2 -> Fr- + H2O
+
+FORMATE_H2
+-start
+# p_fit from MATLAB: forward formation of Formate- from HCO3- + H2
+10 K      = 0.07076   # d^-1
+20 KHdg    = 0.0015    # H2 half-sat
+30 KHCO3  = 0.0003    # HCO3- half-sat
+40 KI_HS  = 0.0014    # HS- inhibition (slightly stronger than in ACETO_H2)
+# Helpers
+50 day2s  = 86400
+60 vL     = SOLN_VOL
+# State
+70 h2     = MOL("Hdg")
+80 hco3   = MOL("HCO3-")
+90 hs     = MOL("HS-")
+# Saturation & inhibition
+100 mH2 = h2 /(KHdg + h2)
+110 mHCO3  = hco3/(KHCO3+ hco3)
+120 finh   = KI_HS/(KI_HS + hs)
+# Rate (mol/kgw/s)
+130 rate_c = (K/day2s)*mH2*mHCO3*finh
+# Moles this step
+140 r_mols = rate_c*vL
+# Stoichiometry: 1 H2 + 1 HCO3- per 1 Formate-
+150 lim = 0.9*MIN((h2*vL)/1.0, (hco3*vL))
+160 moles = r_mols*TIME
+170 IF (moles > lim) THEN moles = lim
+180 SAVE moles
+-end
+
+
+# 4) Hydrogenotrophic methanogenesis
+# CO2 + 4 H2 -> CH4(g) + 2 H2O
+
+METH_H2
+-start
+# p_fit from MATLAB: very low K to deprioritize H2->CH4 vs acetate/formate early
+10 K    = 0.0002     # d^-1
+20 KH2  = 0.0015
+30 KCO2 = 0.0083
+40 KI_HS= 5e-4
+# Helpers
+50 day2s= 86400
+60 vL = SOLN_VOL
+# Time gate: off until day 6 to let SR and acetogenesis dominate
+70 t  = TOTAL_TIME
+72 IF (t < 6*86400) THEN GOTO 900
+# State
+80 h2  = MOL("Hdg")
+90 co2 = MOL("CO2")
+100 hs = MOL("HS-")
+# Saturation & inhibition
+110 mH2  = h2 /(KH2 + h2)
+120 mCO2 = co2/(KCO2+ co2)
+130 finh = KI_HS/(KI_HS + hs)
+# Rate (mol/kgw/s)
+140 rate_c = (K/day2s)*mH2*mCO2*finh
+# Moles this step
+150 r_mols = rate_c*vL
+# Stoichiometry: 4 H2 per 1 CH4; also limited by CO2
+160 lim = 0.9*MIN((h2*vL)/4.0, (co2*vL))
+170 moles = r_mols*TIME
+180 IF (moles > lim) THEN moles = lim
+# Write result when active
+190 SAVE moles
+900 moles = 0
+910 SAVE moles
+-end
+
+
+
+#############################################
+ # Mineral kinetics
+#############################################
+Quartz
+-start
+ 1 A0 = parm(1) # surface area of mineral
+ 2 V = parm(2)   # total volume of water
+ 10 H4SiO4 = tot("Si")  # this controls if SI runs out of water it goes to end 200
+ 20 if (H4SiO4 <= 0) then goto 200
+ 30 k1 = 2e-14  # reaction rate constant at 25 Celcius degree mol/m^2/s
+ 40 E = 90e3   # activation energy of that mineral J/mol
+ 50 R = 8.3145   # Universal gas constant J/mol/K/
+ 60 k2 = k1*exp(E/R*(1/TK - 1/298.15)) # reaction rate constant based on the temperature modification
+ 70 rate = (A0/V)*(m/m0)^0.67*k2*(1 - SR("Quartz"))  # rate calculation (Lasaga 1984)
+ 80 moles = rate*time
+ 90 if (moles < 0) then goto 200
+200 SAVE moles
+-end
+Calcite
+-start
+ 1 A0 = parm(1)
+ 2 V = parm(2)
+ 10 Ca = tot("Ca")
+ 20 if (Ca <= 0) then goto 200
+ 30 k1 = 1e-6
+ 40 E = 23.5e3
+ 50 R = 8.3145
+ 60 k2 = k1*exp(E/R*(1/TK - 1/298.15))
+ 70 rate = (A0/V)*(m/m0)^(2/3)*k2*(1 - SR("Calcite"))
+ 80 moles = rate*time
+ 90 if (moles < 0) then goto 200
+200 SAVE moles
+-end
+Pyrite
+-start
+ 1 A0 = parm(1)
+ 2 V = parm(2)
+ 30 k1 = 2.8184e-05
+ 40 E = 57e3
+ 50 R = 8.3145
+ 60 k2 = k1*exp(E/R*(1/TK - 1/298.15))
+ 70 rate = (A0/V)*(m/m0)^(2/3)*k2*(1 - SR("Pyrite"))
+ 80 moles = rate*time
+200 SAVE moles
+-end
+Barite
+-start
+ 1 A0 = parm(1)
+ 2 V = parm(2)
+10 k25 = 1e-8
+40 Ea = 60e3
+50 Rg = 8.3145
+60 kT = k25*EXP(Ea/Rg*(1/TK - 1/298.15))
+70 rate = (A0/V)*(m/m0)^(2/3)*kT*(1 - SR("Barite"))
+80 moles = rate*TIME
+200 SAVE moles
+-end
+Illite
+-start
+ 1 A0 = parm(1)
+ 2 V = parm(2)
+ 30 k1 = 6.6069e-10
+ 40 E = 22e3
+ 50 R = 8.3145
+ 60 k2 = k1*exp(E/R*(1/TK - 1/298.15))
+ 70 rate = (A0/V)*(m/m0)^(2/3)*k2*(1 - SR("Illite"))
+ 80 moles = rate*time
+200 SAVE moles
+-end
+
+ #
+Hematite
+ -start
+  1 A0 = parm(1)
+  2 V = parm(2)
+# # dCa / dt = (A0 / V) * (m / m0)^(2/3) * k * (1 - SI_Hematite)
+  10  Fe = tot("Fe")
+20  if (Fe <= 0) then goto 200
+30 k1 = 2.51e-15    # # Specific rate constant Hematite k,  k = 2.5119E-15 mol/m2/s (25 C)
+40 E = 66e3   # activation energy J mole-1.
+50 R = 8.3145     # gas constant  J mole-1 Kelvin-1
+60 k2 = k1*exp(E/R*(1/TK - 1/298.15))  # Specific rate constant respect to temperature k
+70 rate = (A0 / V)*(m/m0)^(2/3)* k2 * (1 - SR("Hematite")) # SR=saturation ratio =(ion activity product/ equilibrium constant) with transition-state theory
+80 moles = rate * time
+90 if (moles < 0) then goto 200
+200 SAVE moles
+ -end
+
+#
+Kaolinite
+ -start
+  1 A0 = parm(1)
+  2 V = parm(2)
+ # dCa / dt = (A0 / V) * (m / m0)^(2/3) * k * (1 - SI_Kaolinite)
+  10  Al = tot("Al")
+20  if (Al <= 0) then goto 200
+30 k1 = 5.1069e-7  # Specific rate constant Kaolinite k,  k = 6.6069e-14 mol/m2/s (25 C) %%%%%%%%%%%%%%%%%%%% NOTE MUSCOVITE RATE CONSTANT HAS A LARGE IMPACT ON THE POTASIUM AMOUNT
+40 E = 22e3   # activation energy J mole-1.
+50 R = 8.3145     # gas constant  J mole-1 Kelvin-1
+60 k2 = k1*exp(E/R*(1/TK - 1/298.15))  # Specific rate constant respect to temperature k
+70 rate = (A0 / V)*(m/m0)^(2/3)* k2 * (1 - SR("Kaolinite")) # SR=saturation ratio =(ion activity product/ equilibrium constant) with transition-state theory
+80 moles = rate * time
+90 if (moles < 0) then goto 200
+200 SAVE moles
+ -end
+
+ #
+ Albite
+ -start
+  1 A0 = parm(1)
+  2 V = parm(2)
+# # dCa / dt = (A0 / V) * (m / m0)^(2/3) * k * (1 - SI_Albite)
+  10  Na = tot("Na")
+20  if (Na <= 0) then goto 200
+30 k1 = 2.7542e-13 # # Specific rate constant Albite k,  k = 2.7542e-13 mol/m2/s (25 C)
+40 E = 69e3   # activation energy J mole-1.
+50 R = 8.3145     # gas constant  J mole-1 Kelvin-1
+60 k2 = k1*exp(E/R*(1/TK - 1/298.15))  # Specific rate constant respect to temperature k
+70 rate = (A0 / V)*(m/m0)^(2/3)* k2 * (1 - SR("Albite")) # SR=saturation ratio =(ion activity product/ equilibrium constant) with transition-state theory
+80 moles = rate * time
+90 if (moles < 0) then goto 200
+200 SAVE moles
+ -end
+
+#############################################
+# 8) Output
+#############################################
+# ----------- Output & Graphs  -----------
+SELECTED_OUTPUT
+ -reset false
+ -high_precision true
+ -user_punch true
+USER_PUNCH
+ -headings time_d pH Ptot_atm pH2_atm pCO2_atm pCH4_atm H2_g_mol CO2_g_mol CH4_g_mol SO4_mol Formate Acetate Ca_mol Fe_mol X_SRB_mol X_IRB_mol X_SRB_mol_per_L Fe(OH)3 SR_H2 SR_FOR SR_AC IR_H2 IR_AC IR_FOR Barite Calcite Water_VOL Gas_VOL HS-_mol HCO3_mol Na_tot Mg_tot Cl_tot Ca_tot S6_tot
+-start
+10 t_d = TOTAL_TIME/86400.0
+20 x_srb   = KIN("X_SRB")               # mol
+30 x_irb   = KIN("X_IRB")               # mol (0 if not present)
+40 x_srb_L = x_srb / SOLN_VOL           # mol/L
+50 Ptot = PR_P("CO2(g)") + PR_P("Mtg(g)") + PR_P("Hdg(g)") + PR_P("H2S(g)") + PR_P("Ntg(g)")
+55 n_gas = GAS("Hdg(g)") + GAS("CO2(g)") + GAS("Mtg(g)") + GAS("Ntg(g)") + GAS("H2S(g)")
+56 Vgas_L = n_gas * GAS_VM
+60 PUNCH t_d, -LA("H+"), Ptot, PR_P("Hdg(g)"), PR_P("CO2(g)"), PR_P("Mtg(g)"), GAS("Hdg(g)"), GAS("CO2(g)"), GAS("Mtg(g)"), TOT("S(6)"), TOT("Formate"), TOT("Acetate"), TOT("Ca"), TOT("Fe(2)"), x_srb, x_irb, x_srb_L, EQUI("Fe(OH)3(a)"), KIN("SR_H2"), KIN("SR_FOR"), KIN("SR_AC"), KIN("IR_H2"), KIN("IR_AC"), KIN("IR_FOR"), KIN("Barite"), KIN("Calcite"), SOLN_VOL, Vgas_L, MOL("HS-"), MOL("HCO3-"), TOT("Na"), TOT("Mg"), TOT("Cl"), TOT("Ca"), TOT("S(6)")
+-end
+END
