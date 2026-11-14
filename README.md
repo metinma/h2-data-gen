@@ -7,10 +7,12 @@ runs PHREEQC once per sample and collects the results in one folder per run.
 
 ## Requirements
 
-- Python 3 with `numpy`, `scipy` and `matplotlib`:
+- Python 3.9 or newer with `numpy`, `scipy` and `matplotlib`, plus `tzdata`
+  on Windows (run folders are named in Istanbul time, and Windows Python has
+  no time-zone data of its own):
 
   ```bash
-  pip install numpy scipy matplotlib
+  pip install numpy scipy matplotlib tzdata
   ```
 
 - PHREEQC 3 (the command-line program) and its `phreeqc.dat` database.
@@ -51,7 +53,7 @@ For each enabled model, `datagen.py`:
 
 1. Reads `config.cfg` and the `.phr` template.
 2. Draws all `n_simulations` samples up front from one seed.
-3. Creates `models/<name>/runs/<YYYYMMDD-HHMMSS>/` and copies the config and
+3. Creates `models/<name>/runs/<YYYYMMDD-HHMMSS>/` (Istanbul time) and copies the config and
    template into it, so the run records exactly what produced it.
 4. Writes one input file per sample to `input/`, before anything runs.
 5. Runs the smoke test, if `smoke_test = true` (see below).
