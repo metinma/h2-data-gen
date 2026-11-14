@@ -2,7 +2,7 @@ TITLE Calcite Midyat formation
 # for  a Calcite here I consider 100 % CaCo3
 # this is an additional scenario with biomass growth
 # surface areas based on A_geom=6/d_i*mass_i/density_i then calculate real reactive surface area roughly  A_react = f*A_geom in which f is fraction of 0.001
-#Calcite 100 µm/2710 kg/m^3
+#Calcite 100 ¬µm/2710 kg/m^3
 # This gives the initial moles and surface areas (scales linearly with M_"rock" and inversely with d_i):
 #############################################
 # 0) Extend database for acetate & formate
@@ -41,7 +41,7 @@ SOLUTION 1  # Note that adding only water without any chemical species changes (
  -water {WATER_VOLUME}  # change porosity between 0.1 to 0.3, if porsity 0.1 then for dry conditions in 1 m^3 1 L water 99 L gas
 ##############################################
 # 2) Gaseous phases mixing
-# constructed at 60 bar (59.2 atm) 36∞C
+# constructed at 60 bar (59.2 atm) 36¬∞C
 # We use Mtg(g) for methane. inert
 # Partitioning will occur  during KINETICS
 GAS_PHASE 1 # REV representative element volume assumption 1 m^3 of block, porosity 0.1, 1 L water 99 L gas (changeable) change porosity between 0.1 to 0.3
@@ -64,7 +64,7 @@ GAS_PHASE 1 # REV representative element volume assumption 1 m^3 of block, poros
 EQUILIBRIUM_PHASES 1
 # dissolve_only = prevents precipitation of Fe(OH)3(a)
  Fe(OH)3(a) 0 5e-5  precipitate_only # 0 is saturation index (SI) and 5e-5 mol ferrihydrite available (keep this as it is)
-# If we want Fe(OH)3(a) to behave as a finite reactive inventory that microbes consume, then to prevent PHREEQC from using that phase as an equilibrium buffer (dissolving/precipitating to reach the target SI). The best setting for our ìinventory-onlyî intent is: precipitate_only (so it cannot dissolve to buffer the solution)
+# If we want Fe(OH)3(a) to behave as a finite reactive inventory that microbes consume, then to prevent PHREEQC from using that phase as an equilibrium buffer (dissolving/precipitating to reach the target SI). The best setting for our ‚Äúinventory-only‚Äù intent is: precipitate_only (so it cannot dissolve to buffer the solution)
 # and then we rely on our microbial kinetic reactions to consume the inventory
 
 #############################################
@@ -436,7 +436,7 @@ SR_AC
 110 finh = KI_HS/(KI_HS + hs)     # Inhibition factor (0..1) that decreases as HS- grows
 # --- NEW: biomass multiplier (moles of kinetic reactant X_SRB) ---
 115 x = KIN("X_SRB")   # SRB biomass state variable (Example 15 pattern)
-# Rate (mol/kgw/s) = (K/day)/86400 ◊ Monod(Ac) ◊ Monod(SO4) ◊ inhibition
+# Rate (mol/kgw/s) = (K/day)/86400 √ó Monod(Ac) √ó Monod(SO4) √ó inhibition
 120 rate_c = (K/86400)*mAc*mSO4*finh*x
 # Convert to moles in this step: multiply by solution volume & elapsed time
 130 moles  = rate_c*vL*TIME
