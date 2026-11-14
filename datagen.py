@@ -1,31 +1,3 @@
-"""
-Synthetic data generation for PHREEQC models.
-
-Runs every enabled model in the models/ folder next to this script:
-
-    python datagen.py
-
-Each model has its own folder, named after the model:
-
-    models/<name>/
-        <name>.phr                PHREEQC template
-        config.cfg                its settings (enabled = false skips the model)
-        runs/<timestamp>/         one folder per run, created by this script
-
-Each run folder holds:
-
-    models/<name>/runs/<timestamp>/
-        input/00001_input.txt     template values of every sample, all written before
-                                  the first simulation runs
-        output/00001_output.txt   PHREEQC selected output of that simulation
-        failed/00001_input.txt    input files of failed, timed-out and flagged
-                                  simulations, moved here from input/
-        report.txt                configuration, seed, counts, ranges, failure reasons
-        config.cfg                copy of the config used
-        <name>.phr                copy of the template used
-        run.log, logs/, plot/     only when debug = true
-"""
-
 import configparser
 import hashlib
 import logging
