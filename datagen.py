@@ -40,6 +40,7 @@ import traceback
 from datetime import datetime
 from multiprocessing import Pool
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import matplotlib
 
@@ -584,7 +585,7 @@ def run_model(model_dir, cfg):
         s = scale(u, cfg)
         rows.append({"sim_id": i, **s, **derive(s, cfg)})
 
-    stamp = datetime.now()
+    stamp = datetime.now(ZoneInfo("Europe/Istanbul"))
     run_dir = model_dir / "runs" / f"{stamp:%Y%m%d-%H%M%S}"
     folders = ["input", "output", "failed"] + (["logs", "plot"] if run["debug"] else [])
     for folder in folders:
