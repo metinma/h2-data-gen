@@ -9,17 +9,16 @@ import sys
 import tempfile
 import time
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from multiprocessing import Pool
 from pathlib import Path
-from zoneinfo import ZoneInfo
+from statistics import NormalDist
 
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.stats import qmc, triang, truncnorm
 
 log = logging.getLogger("datagen")
 
@@ -55,6 +54,15 @@ def load_config(path):
     def numbers(section):
         return {k: v if k in text_keys else float(v) for k, v in section.items()}
 
+    if model.get("cushion_gas") not in GASES:
+        raise ValueError(f"{path}: cushion_gas must be one of {', '.join(GASES)}")
+    known = [*DISTRIBUTIONS, *COMPUTED]
+    for name in cp.sections():
+        if name.startswith("parameter.") and cp[name]["distribution"] not in known:
+            raise ValueError(
+                f"{path}: [{name}] distribution must be one of {', '.join(known)}"
+            )
+
     return {
         "run": {
             "enabled": run.getboolean("enabled"),
@@ -67,13 +75,13 @@ def load_config(path):
         },
         "phreeqc": {"executable": ph["executable"], "database": ph["database"]},
         "sampling": {
-            "method": smp["method"],
             "seed": smp["seed"] if smp["seed"] == "auto" else int(smp["seed"]),
         },
         "model": {
             "volume_m3": model.getfloat("volume_m3"),
             "total_pressure_atm": model.getfloat("total_pressure_atm"),
             "h2_pressure_atm": model.getfloat("h2_pressure_atm"),
+            "cushion_gas": model["cushion_gas"],
             "normalize_mineral_fractions": model.getboolean(
                 "normalize_mineral_fractions"
             ),
@@ -131,31 +139,32 @@ def setup_logging(log_file):
         log.addHandler(fh)
 
 
-def unit_points(method, d, seed, n):
-    """n points in [0, 1)^d."""
-    if method == "lhs":
-        return qmc.LatinHypercube(d=d, seed=seed).random(n)
-    if method == "sobol":
-        return qmc.Sobol(d=d, scramble=True, seed=seed).random(n)
-    return np.random.default_rng(seed).random((n, d))
+def latin_hypercube(d, seed, n):
+    """n points in [0, 1)^d, one in each of n equal slices of every dimension.
+
+    The same algorithm and random calls as scipy.stats.qmc.LatinHypercube
+    (scramble=True), so a seed gives the same points as with scipy.
+    """
+    rng = np.random.default_rng(seed)
+    offsets = rng.uniform(size=(n, d))
+    slices = np.tile(np.arange(1, n + 1), (d, 1))
+    for i in range(d):
+        rng.shuffle(slices[i, :])
+    return (slices.T - offsets) / n
+
+
+_STANDARD_NORMAL = NormalDist()
 
 
 def _truncated_normal(u, mean, std, lo, hi):
-    return truncnorm.ppf(u, (lo - mean) / std, (hi - mean) / std, loc=mean, scale=std)
+    """Inverse CDF of a normal distribution truncated to [lo, hi]."""
+    a = _STANDARD_NORMAL.cdf((lo - mean) / std)
+    b = _STANDARD_NORMAL.cdf((hi - mean) / std)
+    return mean + std * _STANDARD_NORMAL.inv_cdf(a + u * (b - a))
 
 
 def _uniform(u, p):
     return p["low"] + u * (p["high"] - p["low"])
-
-
-def _loguniform(u, p):
-    lo, hi = np.log10(p["low"]), np.log10(p["high"])
-    return 10 ** (lo + u * (hi - lo))
-
-
-def _triangular(u, p):
-    width = p["high"] - p["low"]
-    return triang.ppf(u, (p["mode"] - p["low"]) / width, loc=p["low"], scale=width)
 
 
 def _normal(u, p):
@@ -174,8 +183,6 @@ def _lognormal(u, p):
 
 DISTRIBUTIONS = {
     "uniform": _uniform,
-    "loguniform": _loguniform,
-    "triangular": _triangular,
     "normal": _normal,
     "lognormal": _lognormal,
 }
@@ -205,6 +212,9 @@ def scale(unit_row, cfg):
     return {name: s[name] for name in params}
 
 
+GASES = ("CO2", "H2S", "N2", "CH4")
+
+
 def derive(s, cfg):
     """Quantities computed from the sampled parameters."""
     m = cfg["model"]
@@ -214,12 +224,11 @@ def derive(s, cfg):
     d["water_volume_L"] = pore_volume * s["water_fraction"]
     d["gas_volume_L"] = pore_volume - d["water_volume_L"]
 
-    d["pCH4"] = (
+    cushion = m["cushion_gas"]
+    d[f"p{cushion}"] = (
         m["total_pressure_atm"]
-        - s["pCO2"]
-        - s["pH2S"]
-        - s["pN2"]
         - m["h2_pressure_atm"]
+        - sum(s[f"p{gas}"] for gas in GASES if gas != cushion)
     )
 
     fractions = {mn["name"]: s[mn["fraction_parameter"]] for mn in cfg["minerals"]}
@@ -229,6 +238,7 @@ def derive(s, cfg):
 
     for mineral in cfg["minerals"]:
         name = mineral["name"]
+        d[f"{name}_volume_fraction"] = fractions[name]
         mass = (
             mineral["density_kg_m3"]
             * m["volume_m3"]
@@ -260,9 +270,10 @@ def replacements(s, d, cfg):
         {
             "{WATER_VOLUME}": f"{d['water_volume_L']:.4e}",
             "{GAS_VOLUME}": f"{d['gas_volume_L']:.4e}",
-            "{CH4}": f"{d['pCH4']:.4e}",
         }
     )
+    cushion = cfg["model"]["cushion_gas"]
+    reps[f"{{{cushion}}}"] = f"{d[f'p{cushion}']:.4e}"
     for mineral in cfg["minerals"]:
         name = mineral["name"]
         reps[mineral["moles_placeholder"]] = f"{d[f'{name}_moles']:.4e}"
@@ -326,7 +337,11 @@ def run_phreeqc(text, tag):
             raise SimulationError(" | ".join(errors[:3]))
         if res.returncode != 0:
             raise SimulationError(f"PHREEQC exit code {res.returncode}")
-        return Path(tmp, "selected_output_1.sel").read_text(encoding=_W["encoding"])
+        version = re.search(r"\*\s*(PHREEQC[\w.\-]*)\s*\*", res.stdout + res.stderr + out)
+        return (
+            Path(tmp, "selected_output_1.sel").read_text(encoding=_W["encoding"]),
+            version.group(1) if version else None,
+        )
 
 
 def first_step(time_column):
@@ -373,9 +388,11 @@ def work(task):
         "message": "",
         "headers": None,
         "data": None,
+        "phreeqc_version": None,
     }
     try:
-        lines = run_phreeqc(render(_W["template"], task["reps"]), tag).splitlines()
+        sel, res["phreeqc_version"] = run_phreeqc(render(_W["template"], task["reps"]), tag)
+        lines = sel.splitlines()
         headers = lines[0].split()
         data = np.array([[float(x) for x in ln.split()] for ln in lines[1:]])
         col = {h: i for i, h in enumerate(headers)}
@@ -460,6 +477,7 @@ def save_result(run_dir, task, res, cfg, usable):
             res["data"],
             set(cfg["output"]["drop_columns"]),
         )
+        res["n_rows"] = len(res["data"])
     else:
         shutil.move(
             run_dir / "input" / f"{tag}_input.txt",
@@ -467,26 +485,86 @@ def save_result(run_dir, task, res, cfg, usable):
         )
 
 
+STATUSES = ("success", "flagged", "failed", "timeout")
+SEP = "=" * 80
+
+
+def _num(v):
+    return f"{v:.4e}"
+
+
+def _table(header, lines):
+    """Text table: first column left-aligned, the rest right-aligned."""
+    widths = [max(len(str(c)) for c in col) for col in zip(header, *lines)]
+
+    def fmt(cells):
+        return "  " + "  ".join(
+            f"{c:<{w}}" if k == 0 else f"{c:>{w}}"
+            for k, (c, w) in enumerate(zip(map(str, cells), widths))
+        )
+
+    return [fmt(header), "  " + "  ".join("-" * w for w in widths)] + [
+        fmt(line) for line in lines
+    ]
+
+
+def _stats(rows, name):
+    """min, median, max of one quantity over some runs, as text."""
+    v = [r[name] for r in rows]
+    if not v:
+        return ["-", "-", "-"]
+    return [_num(min(v)), _num(float(np.median(v))), _num(max(v))]
+
+
+def _id_ranges(ids):
+    """[1, 2, 3, 7] -> '1-3, 7'."""
+    ids, parts = sorted(ids), []
+    start = prev = ids[0]
+    for k in ids[1:] + [None]:
+        if k is not None and k == prev + 1:
+            prev = k
+            continue
+        parts.append(f"{start}" if start == prev else f"{start}-{prev}")
+        if k is not None:
+            start = prev = k
+    return ", ".join(parts)
+
+
+def _section(title):
+    return ["", SEP, title, SEP, ""]
+
+
 def write_report(run_dir, cfg, meta, records, n_planned):
-    counts = {s: 0 for s in ("success", "flagged", "failed", "timeout")}
-    for _, res in records:
-        counts[res["status"]] += 1
-    sep = "=" * 80
-    out = [
-        sep,
-        "General Information",
-        sep,
-        "",
+    """Write report.txt: settings, results, value ranges, failures and every run.
+
+    Called before the batch, during it and at the end, so the report is
+    always current, even if the batch is stopped.
+    """
+    params = cfg["parameters"]
+    varied = [n for n, p in params.items() if p["distribution"] != "constant"]
+    derived = meta["derived_keys"]
+    fractions = [k for k in derived if k.endswith("_volume_fraction")]
+    counts = {s: sum(res["status"] == s for _, res in records) for s in STATUSES}
+    ok = [row for row, res in records if res["status"] == "success"]
+    other = [row for row, res in records if res["status"] != "success"]
+    m = cfg["model"]
+
+    out = [SEP, "General Information", SEP, ""]
+    out += [
         f"Run folder      => {run_dir}",
         f"Model           => {meta['template_name']} (sha256 {meta['template_sha256'][:12]})",
-        f"PHREEQC         => {cfg['phreeqc']['executable']}",
+        f"datagen.py      => {meta['code_version']}",
+        f"PHREEQC         => {cfg['phreeqc']['executable']} ({meta.get('phreeqc_version') or 'version not known yet'})",
         f"Database        => {cfg['phreeqc']['database']}",
         f"Started         => {meta['started']}",
+        f"Finished        => {meta['finished'] or 'still running'}",
         f"Mode            => {'debug' if cfg['run']['debug'] else 'production'}",
-        f"Sampling        => {cfg['sampling']['method']}, seed {meta['seed']}",
+        f"Sampling        => Latin hypercube, seed {meta['seed']}",
         f"Model encoding  => {cfg['run']['model_encoding']}",
         f"Workers         => {cfg['run']['workers']}",
         f"Timeout         => {cfg['run']['timeout_s']} s",
+        f"Gas             => {m['total_pressure_atm']} atm total, H2 {m['h2_pressure_atm']} atm, "
+        f"cushion gas {m['cushion_gas']}",
         f"Smoke test      => {meta['smoke']}",
         f"Simulations     => {len(records)} of {n_planned} finished",
     ]
@@ -494,49 +572,229 @@ def write_report(run_dir, cfg, meta, records, n_planned):
     if records:
         runtimes = [res["runtime_s"] for _, res in records]
         out.append(
-            f"Runtime per sim => median {np.median(runtimes):.1f} s, max {max(runtimes):.1f} s"
+            f"Runtime per sim => median {np.median(runtimes):.1f} s, "
+            f"max {max(runtimes):.1f} s, total {sum(runtimes) / 3600:.2f} CPU h"
         )
-
-    ok = [row for row, res in records if res["status"] == "success"]
-    bad = [row for row, res in records if res["status"] != "success"]
-
-    def rng(rows, name):
-        v = [r[name] for r in rows]
-        return f"{min(v):>12.4e}{max(v):>12.4e}" if v else f"{'-':>12}{'-':>12}"
-
-    out += [
-        "",
-        sep,
-        "Parameter Ranges",
-        sep,
-        "",
-        f"  {'parameter':<16}{'distribution':<12}{'bounds':>24}  {'successful runs':>24}  {'other runs':>24}",
-    ]
-    for name, p in cfg["parameters"].items():
-        bounds = (
-            f"{p['low']:>12.4e}{p['high']:>12.4e}"
-            if p["distribution"] not in COMPUTED
-            else f"{'-':>12}{'-':>12}"
+    saved = [res for _, res in records if res.get("n_rows")]
+    if saved:
+        n_rows = [res["n_rows"] for res in saved]
+        rows_text = (
+            f"{n_rows[0]} rows each"
+            if min(n_rows) == max(n_rows)
+            else f"{min(n_rows)} to {max(n_rows)} rows"
         )
         out.append(
-            f"  {name:<16}{p['distribution']:<12}{bounds}  "
-            f"{rng(ok, name)}  {rng(bad, name)}"
+            f"Output          => {len(saved)} files in output/, {rows_text}, "
+            f"{len(meta['output_columns'])} columns"
         )
 
-    problems = sorted(
-        [(row, res) for row, res in records if res["status"] != "success"],
-        key=lambda r: r[0]["sim_id"],
+    if meta.get("smoke_row"):
+        sr = meta["smoke_row"]
+        out += _section("Smoke Test (median of every parameter)")
+        out += [f"Result => {meta['smoke']}", ""]
+        out += _table(
+            ["quantity", "value"],
+            [[n, _num(sr[n])] for n in list(params) + derived],
+        )
+
+    out += _section("Sampled Parameters")
+    out += [
+        "Ranges over the runs, split into successful runs and all others",
+        "(flagged, failed, timeout). Constant parameters are listed once.",
+        "",
+    ]
+    lines = []
+    for name, p in params.items():
+        if p["distribution"] == "constant":
+            lines.append([name, "constant", "-", "-", _num(p["value"]), "", "", "", "", ""])
+            continue
+        bounds = (
+            [_num(p["low"]), _num(p["high"])]
+            if p["distribution"] not in COMPUTED
+            else ["-", "-"]
+        )
+        lines.append([name, p["distribution"], *bounds, *_stats(ok, name), *_stats(other, name)])
+    out += _table(
+        ["parameter", "distribution", "low", "high",
+         "ok min", "ok median", "ok max", "other min", "other median", "other max"],
+        lines,
     )
+
+    out += _section("Derived Values")
+    out += [
+        "Computed from the parameters (see the config): volumes in L, gas",
+        "pressure in atm, mineral moles and areas in m², and each mineral's",
+        "volume fraction of the solid after scaling to sum to 1.",
+        "",
+    ]
+    out += _table(
+        ["quantity", "ok min", "ok median", "ok max",
+         "other min", "other median", "other max"],
+        [[k, *_stats(ok, k), *_stats(other, k)] for k in derived],
+    )
+
+    problems = [(row, res) for row, res in records if res["status"] != "success"]
     if problems:
-        out += ["", sep, "Flagged and Failed Runs", sep, ""]
+        out += _section("Flagged and Failed Runs")
+        groups = {}
+        for row, res in problems:
+            groups.setdefault((res["status"], res["message"]), []).append(row["sim_id"])
+        for (status, message), ids in sorted(groups.items(), key=lambda g: -len(g[1])):
+            out += [
+                f"{status}: {len(ids)} run{'s' if len(ids) > 1 else ''}",
+                f"  {message}",
+                f"  runs: {_id_ranges(ids)}",
+                "",
+            ]
+
+    if records:
+        out += _section("Simulations")
         out += [
-            f"  {row['sim_id']:>6}  {res['status']:<8} {res['message']}"
-            for row, res in problems
+            "One line per finished run: the varied parameters, with the mineral",
+            "fractions as used (after scaling to sum to 1). The values PHREEQC",
+            "was given are in input/ (or failed/) under the same number.",
+            "",
         ]
+        drawn = {mn["fraction_parameter"] for mn in cfg["minerals"]}
+        cols = [n for n in varied if n not in drawn] + fractions
+        out += _table(
+            ["sim", "status", "runtime_s", *cols],
+            [
+                [row["sim_id"], res["status"], f"{res['runtime_s']:.1f}",
+                 *[_num(row[c]) for c in cols]]
+                for row, res in sorted(records, key=lambda r: r[0]["sim_id"])
+            ],
+        )
+
+    if meta.get("output_columns"):
+        out += _section("Output Columns")
+        out += [", ".join(meta["output_columns"])]
+
     (run_dir / "report.txt").write_text("\n".join(out) + "\n", encoding="utf-8")
 
 
+def code_version():
+    """sha256 of datagen.py, plus its git commit when this is a git checkout."""
+    path = Path(__file__).resolve()
+    text = f"sha256 {hashlib.sha256(path.read_bytes()).hexdigest()[:12]}"
+    try:
+        git = ["git", "-C", str(path.parent)]
+        commit = subprocess.run(
+            git + ["rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, check=True, timeout=10,
+        ).stdout.strip()
+        dirty = subprocess.run(
+            git + ["status", "--porcelain", "--", path.name],
+            capture_output=True, text=True, check=True, timeout=10,
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return text
+    return f"{text}, git {commit}" + (" with uncommitted changes" if dirty else "")
+
+
 MODELS_DIR = Path(__file__).resolve().parent / "models"
+
+# Run folders are named in Istanbul time. Turkey has kept UTC+3 all year
+# since 2016, so a fixed offset needs no time-zone database.
+ISTANBUL = timezone(timedelta(hours=3), "Europe/Istanbul")
+
+
+def now():
+    return datetime.now(ISTANBUL)
+
+
+def draw_samples(cfg, seed):
+    """One row per simulation: its parameters and the values derived from them."""
+    rows = []
+    points = latin_hypercube(len(sampled(cfg)), seed, cfg["run"]["n_simulations"])
+    for i, u in enumerate(points, 1):
+        s = scale(u, cfg)
+        rows.append({"sim_id": i, **s, **derive(s, cfg)})
+    return rows
+
+
+def make_run_dir(model_dir, model_path, debug, stamp):
+    """Create the run folder with copies of the config and template."""
+    run_dir = model_dir / "runs" / f"{stamp:%Y%m%d-%H%M%S}"
+    for folder in ["input", "output", "failed"] + (["logs", "plot"] if debug else []):
+        (run_dir / folder).mkdir(parents=True)
+    shutil.copyfile(model_dir / "config.cfg", run_dir / "config.cfg")
+    shutil.copyfile(model_path, run_dir / model_path.name)
+    return run_dir
+
+
+def write_inputs(run_dir, rows, cfg):
+    """Write one input file per sample and return the tasks for the workers."""
+    tasks = []
+    for r in rows:
+        task = {
+            "sim_id": r["sim_id"],
+            "tag": f"{r['sim_id']:05d}",
+            "reps": replacements({k: r[k] for k in cfg["parameters"]}, r, cfg),
+        }
+        write_input(
+            run_dir / "input" / f"{task['tag']}_input.txt",
+            task["reps"],
+            cfg["output"]["input_file"],
+        )
+        tasks.append(task)
+    return tasks
+
+
+def run_smoke_test(cfg, settings, meta):
+    """Run the median of every parameter once, in this process."""
+    s = scale([0.5] * len(sampled(cfg)), cfg)
+    d = derive(s, cfg)
+    meta["smoke_row"] = {**s, **d}
+    init_worker(settings)
+    log.info("Smoke test: running the median of every parameter...")
+    res = work({"sim_id": 0, "tag": "00000", "reps": replacements(s, d, cfg)})
+    meta["phreeqc_version"] = res["phreeqc_version"]
+    meta["smoke"] = f"{res['status']} in {res['runtime_s']} s {res['message']}".strip()
+    return res
+
+
+def run_batch(run_dir, cfg, settings, meta, rows, tasks, usable):
+    """Run every task on the worker pool, saving each result as it arrives."""
+    n = len(tasks)
+    by_id = {r["sim_id"]: r for r in rows}
+    task_by_id = {t["sim_id"]: t for t in tasks}
+    drop = set(cfg["output"]["drop_columns"])
+    log.info(
+        "Running %d simulations on %d workers (timeout: %s s).",
+        n,
+        cfg["run"]["workers"],
+        cfg["run"]["timeout_s"],
+    )
+
+    last_report = time.perf_counter()
+    records = []
+    with Pool(
+        processes=cfg["run"]["workers"], initializer=init_worker, initargs=(settings,)
+    ) as pool:
+        for res in pool.imap_unordered(work, tasks):
+            save_result(run_dir, task_by_id[res["sim_id"]], res, cfg, usable)
+            if res["headers"] and meta["output_columns"] is None:
+                meta["output_columns"] = [h for h in res["headers"] if h not in drop]
+            meta["phreeqc_version"] = meta["phreeqc_version"] or res["phreeqc_version"]
+            res["data"] = None  # saved to output/; the report only needs the row count
+            records.append((by_id[res["sim_id"]], res))
+
+            note = f" ({res['message']})" if res["message"] else ""
+            log.log(
+                logging.INFO if res["status"] == "success" else logging.WARNING,
+                "[%d/%d] sim %d: %s in %.1f s%s",
+                len(records),
+                n,
+                res["sim_id"],
+                res["status"],
+                res["runtime_s"],
+                note,
+            )
+            if time.perf_counter() - last_report > 60:
+                write_report(run_dir, cfg, meta, records, n)
+                last_report = time.perf_counter()
+    return records
 
 
 def run_model(model_dir, cfg):
@@ -544,43 +802,38 @@ def run_model(model_dir, cfg):
     run = cfg["run"]
     model_path = model_dir / f"{model_dir.name}.phr"
     template = model_path.read_text(encoding=run["model_encoding"])
+    n = run["n_simulations"]
 
     seed = cfg["sampling"]["seed"]
     if seed == "auto":
         seed = int(np.random.SeedSequence().entropy % 2**32)
-    n = run["n_simulations"]
+    rows = draw_samples(cfg, seed)
 
-    rows = []
-    for i, u in enumerate(
-        unit_points(cfg["sampling"]["method"], len(sampled(cfg)), seed, n), 1
-    ):
-        s = scale(u, cfg)
-        rows.append({"sim_id": i, **s, **derive(s, cfg)})
-
-    stamp = datetime.now(ZoneInfo("Europe/Istanbul"))
-    run_dir = model_dir / "runs" / f"{stamp:%Y%m%d-%H%M%S}"
-    folders = ["input", "output", "failed"] + (["logs", "plot"] if run["debug"] else [])
-    for folder in folders:
-        (run_dir / folder).mkdir(parents=True)
-    shutil.copyfile(model_dir / "config.cfg", run_dir / "config.cfg")
-    shutil.copyfile(model_path, run_dir / model_path.name)
+    stamp = now()
+    run_dir = make_run_dir(model_dir, model_path, run["debug"], stamp)
     setup_logging(run_dir / "run.log" if run["debug"] else None)
-
     log.info("Model %s | run folder: %s", model_dir.name, run_dir)
     log.info(
-        "Mode: %s | seed %d | %d samples (%s)",
+        "Mode: %s | seed %d | %d samples",
         "debug" if run["debug"] else "production",
         seed,
         n,
-        cfg["sampling"]["method"],
     )
 
     meta = {
         "seed": seed,
         "started": stamp.isoformat(timespec="seconds"),
+        "finished": None,
         "template_name": model_path.name,
         "template_sha256": hashlib.sha256(model_path.read_bytes()).hexdigest(),
+        "code_version": code_version(),
         "smoke": "on" if run["smoke_test"] else "off",
+        "smoke_row": None,
+        "phreeqc_version": None,
+        "output_columns": None,
+        "derived_keys": [
+            k for k in rows[0] if k != "sim_id" and k not in cfg["parameters"]
+        ],
     }
     settings = {
         "template": template,
@@ -595,40 +848,18 @@ def run_model(model_dir, cfg):
         "keep_initial_row": cfg["output"]["keep_initial_row"],
         "encoding": run["model_encoding"],
     }
-    usable = (
-        ("success", "flagged") if cfg["output"]["include_flagged"] else ("success",)
-    )
+    usable = ("success", "flagged") if cfg["output"]["include_flagged"] else ("success",)
 
-    tasks = [
-        {
-            "sim_id": r["sim_id"],
-            "tag": f"{r['sim_id']:05d}",
-            "reps": replacements({k: r[k] for k in cfg["parameters"]}, r, cfg),
-        }
-        for r in rows
-    ]
-    for t in tasks:
-        write_input(
-            run_dir / "input" / f"{t['tag']}_input.txt",
-            t["reps"],
-            cfg["output"]["input_file"],
-        )
+    tasks = write_inputs(run_dir, rows, cfg)
     log.info("Wrote %d input files to %s", n, run_dir / "input")
     write_report(run_dir, cfg, meta, [], n)
 
     if run["smoke_test"]:
-        s = scale([0.5] * len(sampled(cfg)), cfg)
-        init_worker(settings)
-        log.info("Smoke test: running the median of every parameter...")
-        res = work(
-            {"sim_id": 0, "tag": "00000", "reps": replacements(s, derive(s, cfg), cfg)}
-        )
-        meta["smoke"] = (
-            f"{res['status']} in {res['runtime_s']} s {res['message']}".strip()
-        )
+        res = run_smoke_test(cfg, settings, meta)
         if res["status"] != "success":
             log.error("Smoke test %s: %s", res["status"], res["message"])
             log.error("Skipping %s.", model_dir.name)
+            meta["finished"] = now().isoformat(timespec="seconds")
             write_report(run_dir, cfg, meta, [], n)
             return False
         log.info(
@@ -637,43 +868,17 @@ def run_model(model_dir, cfg):
             res["runtime_s"] * n / run["workers"] / 60,
         )
 
-    by_id = {r["sim_id"]: r for r in rows}
-    task_by_id = {t["sim_id"]: t for t in tasks}
-    log.info(
-        "Running %d simulations on %d workers (timeout: %s s).",
-        n,
-        run["workers"],
-        run["timeout_s"],
-    )
-
     t0 = time.perf_counter()
-    records = []
-    with Pool(
-        processes=run["workers"], initializer=init_worker, initargs=(settings,)
-    ) as pool:
-        for res in pool.imap_unordered(work, tasks):
-            row = by_id[res["sim_id"]]
-            save_result(run_dir, task_by_id[res["sim_id"]], res, cfg, usable)
-            records.append((row, res))
-            level = logging.INFO if res["status"] == "success" else logging.WARNING
-            note = f" ({res['message']})" if res["message"] else ""
-            log.log(
-                level,
-                "[%d/%d] sim %d: %s in %.1f s%s",
-                len(records),
-                n,
-                res["sim_id"],
-                res["status"],
-                res["runtime_s"],
-                note,
-            )
-
+    records = run_batch(run_dir, cfg, settings, meta, rows, tasks, usable)
+    wall = time.perf_counter() - t0
+    meta["finished"] = (
+        f"{now().isoformat(timespec='seconds')} (batch took {wall / 60:.1f} min)"
+    )
     write_report(run_dir, cfg, meta, records, n)
-    n_ok = sum(res["status"] in usable for _, res in records)
     log.info(
         "Finished in %.1f s: %d of %d simulations in output/.",
-        time.perf_counter() - t0,
-        n_ok,
+        wall,
+        sum(res["status"] in usable for _, res in records),
         n,
     )
     log.info("Report: %s", run_dir / "report.txt")
