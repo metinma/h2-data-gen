@@ -7,12 +7,10 @@ runs PHREEQC once per sample and collects the results in one folder per run.
 
 ## Requirements
 
-- Python 3.9 or newer with `numpy`, `scipy` and `matplotlib`, plus `tzdata`
-  on Windows (run folders are named in Istanbul time, and Windows Python has
-  no time-zone data of its own):
+- Python 3.9 or newer with `numpy` and `matplotlib`:
 
   ```bash
-  pip install numpy scipy matplotlib tzdata
+  pip install numpy matplotlib
   ```
 
 - PHREEQC 3 (the command-line program) and its `phreeqc.dat` database.
@@ -44,8 +42,17 @@ models/
 A model's folder name and its template name must match: `models/trona/`
 holds `trona.phr`.
 
-Current models: `calcite`, `dolomite`, `mica-carbonate-schist`, `mica-schist`,
-`quartzite-schist`, `sandstone`, `trona`.
+Every model is a 1 m³ REV of reservoir rock: the porosity sets the pore
+space, which is shared between water and gas, and the rest is rock. There
+are two kinds of model:
+
+- **Reservoir models**, named after the rock: `calcite`, `dolomite`,
+  `mica-carbonate-schist`, `mica-schist`, `quartzite-schist`, `sandstone`,
+  `trona`. CH4 is the main gas.
+- **Lab-experiment models**, named `<rock>-exp`: built from one of our lab
+  experiments, scaled up to the REV, with N2 as the cushion gas.
+  `calcite-exp` (Midyat calcite), `halite-exp` (Tuz Gölü halite),
+  `sandstone-exp` (Haymana sandstone), `trona-exp` (Beypazarı trona).
 
 ## What a run does
 
@@ -60,7 +67,8 @@ For each enabled model, `datagen.py`:
 6. Runs the simulations in parallel on `workers` processes. For each one it
    fills the template's placeholders, runs PHREEQC, checks the result and
    saves it.
-7. Writes `report.txt`.
+7. Writes `report.txt`, before the batch, at least once a minute during it
+   and at the end.
 
 ### Run folder
 
@@ -69,7 +77,7 @@ models/<name>/runs/<timestamp>/
     input/00001_input.txt     the placeholder values of each sample
     output/00001_output.txt   PHREEQC's selected output of each usable run
     failed/00001_input.txt    input files of failed, timed-out and flagged runs
-    report.txt                settings, seed, counts, parameter ranges, failures
+    report.txt                the run's settings, results and every sample (see below)
     config.cfg                copy of the config used
     <name>.phr                copy of the template used
     run.log, logs/, plot/     only with debug = true
@@ -85,6 +93,19 @@ models/<name>/runs/<timestamp>/
   script itself fails on a run.
 - **`plot/`** (debug only) holds one figure per simulation, laid out by the
   `[plot.*]` sections.
+- **`report.txt`** has these sections:
+  - *General Information*: template and `datagen.py` hashes (and git commit),
+    PHREEQC version, start and finish time, settings, counts by status,
+    runtimes and a summary of the output files.
+  - *Smoke Test*: the parameter and derived values of the median sample.
+  - *Sampled Parameters* and *Derived Values*: bounds, and min / median / max
+    over the successful runs and over all other runs.
+  - *Flagged and Failed Runs*: grouped by reason, with a count and the run
+    numbers.
+  - *Simulations*: one line per run with its status, runtime, varied
+    parameters and the mineral volume fractions after scaling. These are the
+    values not in the input files.
+  - *Output Columns*: the columns of the output files.
 
 ### Result status
 
@@ -97,7 +118,7 @@ Every simulation ends in one of four states:
 | `failed` | PHREEQC reported an error, exited abnormally or stopped early | `failed/` |
 | `timeout` | Took longer than `timeout_s` | `failed/` |
 
-`report.txt` lists every run that isn't `success`, with the reason.
+`report.txt` groups the runs that aren't `success` by reason.
 
 ### Smoke test
 
@@ -136,8 +157,13 @@ a value, put a space before the `#`.
 
 | Key | Meaning |
 |---|---|
-| `method` | `lhs` (Latin hypercube), `sobol` (use a power of 2 for `n_simulations`) or `random`. |
 | `seed` | `auto` or an integer. The seed used is written to `report.txt`, so `auto` runs can be repeated. |
+
+Samples are drawn by Latin hypercube sampling: each parameter's range is cut
+into `n_simulations` slices of equal probability, and every slice is used
+once. The algorithm is the one in `scipy.stats.qmc.LatinHypercube`, written
+out with numpy, so a seed gives the same samples as runs made when the script
+still used scipy.
 
 ### `[model]`
 
@@ -146,6 +172,7 @@ a value, put a space before the `#`.
 | `volume_m3` | Rock volume represented by one simulation. |
 | `total_pressure_atm` | Total gas pressure. Must match `-pressure` in the template. |
 | `h2_pressure_atm` | H2 partial pressure. Must match `Hdg(g)` in the template. |
+| `cushion_gas` | The cushion gas, which takes the rest of the total pressure: `CH4` or `N2` in the current models (`CO2` and `H2S` also work). |
 | `normalize_mineral_fractions` | `true` scales the mineral fractions of each sample to sum to 1. |
 
 ### `[parameter.<name>]`
@@ -157,8 +184,6 @@ distribution needs:
 | `distribution` | Keys | Value |
 |---|---|---|
 | `uniform` | `low`, `high` | Uniform between the bounds. |
-| `loguniform` | `low`, `high` | Uniform in log10 between the bounds. |
-| `triangular` | `low`, `mode`, `high` | Triangular. |
 | `normal` | `low`, `high`, `mean`, `std` | Normal, truncated to the bounds. |
 | `lognormal` | `low`, `high`, `median`, `sigma_log10` | Lognormal, truncated to the bounds. `sigma_log10` is the standard deviation of log10(x). |
 | `constant` | `value` | Not sampled: always `value`. |
@@ -169,13 +194,13 @@ dissolved species the values are in mol/kgw, and for gases they are partial
 pressures in atm.
 
 Every model needs these parameters, because the script derives the volumes,
-CH4 and the mineral amounts from them:
+the cushion gas and the mineral amounts from them:
 
 | Parameter | Used for |
 |---|---|
 | `porosity` | Pore volume, and the solid volume for the minerals. |
 | `water_fraction` | Share of the pore volume filled with water. |
-| `pCO2`, `pH2S`, `pN2` | Gas partial pressures; CH4 makes up the rest. |
+| `pCO2`, `pH2S`, `pN2`, `pCH4` | Gas partial pressures, except the cushion gas, which makes up the rest. |
 | one fraction parameter per mineral | Named by `fraction_parameter` in `[mineral.*]`. |
 
 ### `[mineral.<name>]`
@@ -201,7 +226,7 @@ These placeholders are filled from the parameters above, not from a
 |---|---|
 | `{WATER_VOLUME}` | `volume_m3 × porosity × 1000 × water_fraction` (L) |
 | `{GAS_VOLUME}` | `volume_m3 × porosity × 1000 − {WATER_VOLUME}` (L) |
-| `{CH4}` | `total_pressure_atm − pCO2 − pH2S − pN2 − h2_pressure_atm` (atm) |
+| `{CH4}` or `{N2}` (the cushion gas's placeholder) | `total_pressure_atm − h2_pressure_atm −` the other three gas pressures (atm) |
 | mineral moles | `mass / molar_mass × reactive_fraction × moles_multiplier` |
 | mineral area | `6 / diameter × mass / density × reactive_fraction × area_multiplier` (m²) |
 
@@ -242,9 +267,10 @@ One section per panel of the debug figure, in order, two panels per row.
 
 ## Adding a model
 
-1. Create `models/<name>/` and save the template as `<name>.phr`. Replace each
+1. Create `models/<name>/` and save the template as `<name>.phr`, naming it
+   after the rock, with `-exp` for a lab experiment (e.g. `halite-exp`). Replace each
    value to sample with a `{PLACEHOLDER}`, and use `{WATER_VOLUME}`,
-   `{GAS_VOLUME}` and `{CH4}` for the derived values.
+   `{GAS_VOLUME}` and the cushion gas's placeholder (`{CH4}` or `{N2}`) for the derived values.
 2. Copy the `config.cfg` of the most similar model and edit it: the
    parameters and their ranges, the minerals, `input_file`, and the checks
    and plots for the template's output columns.
