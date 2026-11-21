@@ -4,17 +4,22 @@ A showcase of bugs in `models/calcite/calcite.phr`. Nothing in `models/` or
 `datagen.py` is changed.
 
 ```
-original/calcite.phr     the template, placeholders filled in, otherwise unchanged
-fixed/calcite.phr        the same file with the fixes below, each marked "# FIX:"
-compare.py               runs both and draws calcite_comparison.png
-calcite_comparison.png   the figure: original left, fixed right, same y axis per row
-output/*.tsv             PHREEQC's selected output of both runs
+original/calcite.phr            the template, placeholders filled in, otherwise unchanged
+fixes.py                        the four fixes, as text edits on the original
+compare.py                      builds the variants, runs them, draws the figures
+variants/<name>/calcite.phr     each fix alone, and all fixes ("# FIX n:" marks the edits)
+figures/fix1-min.png ...        one fix vs the original, side by side
+figures/all_fixes.png           the original, each fix alone and all fixes, side by side
+output/<name>.tsv               PHREEQC's selected output of every run
 ```
 
-Both files get the same input: the smoke-test values of `datagen.py`, which
-are the median of every parameter in `models/calcite/config.cfg` with the
-volumes, CH4 and calcite amounts from `derive()` (T = 42.5 °C, porosity 0.2,
-100 L water, 100 L gas, CH4 58.15 atm, 21.66 mol reactive calcite).
+In every figure the rows share one y axis, so a flat line in one column
+next to a curve in another is a real difference.
+
+All variants get the same input: the smoke-test values of `datagen.py`,
+which are the median of every parameter in `models/calcite/config.cfg` with
+the volumes, CH4 and calcite amounts from `derive()` (T = 42.5 °C, porosity
+0.2, 100 L water, 100 L gas, CH4 58.15 atm, 21.66 mol reactive calcite).
 
 ## Run
 
@@ -24,30 +29,31 @@ python compare.py --phreeqc /path/to/phreeqc --database /path/to/phreeqc.dat
 ```
 
 Without the options, it uses `executable` and `database` from
-`models/calcite/config.cfg`. Each model takes about 3 to 10 s. The figure
-was made with PHREEQC built from `phreeqc-3.9.0-17591.tar.gz`. Its banner
-prints `PHREEQC_3.8.9`, so that is the version shown in the figure title.
+`models/calcite/config.cfg`. The six models run in parallel, each in 3 to
+10 s. The figures were made with PHREEQC built from
+`phreeqc-3.9.0-17591.tar.gz`. Its banner prints `PHREEQC_3.8.9`, so that is
+the version shown in the figure titles.
 
-## Bugs fixed
+## The fixes
 
-| # | Where | Bug | Effect |
+| Fix | Where | Bug | Effect of the fix alone |
 |---|---|---|---|
-| 1 | SR_H2, SR_AC, SR_FOR, IR_AC, IR_FOR, ACETO_H2, FORMATE_H2, METH_H2, X_SRB, X_IRB | `MIN()` is not a PHREEQC BASIC function. PHREEQC reads it as an undeclared array and it evaluates to 0 (checked: `PRINT MIN(3,5)` prints 0). | `lim = 0`, so `IF (moles > lim) THEN moles = lim` sets every one of these reactions to 0, and biomass can never grow. |
-| 2 | IR_H2, IR_AC, IR_FOR, METH_H2 | No `END` after `SAVE moles`, so the program runs on into `900 moles = 0 / 910 SAVE moles`. The last `SAVE` wins. | These reactions are always 0, even where `lim` doesn't use `MIN`. |
-| 3 | X_SRB, X_IRB lines 260 and 270 | The 0.9 cushion is applied twice. | The growth limit is 0.81 instead of 0.9 (hidden by bug 1). |
-| 4 | USER_PUNCH line 55 | `GAS("Ntg(g)")` is counted twice in `n_gas`. | `Gas_VOL` is too high by the N2 volume. |
+| 1 `fix1-min` | SR_H2, SR_AC, SR_FOR, IR_AC, IR_FOR, ACETO_H2, FORMATE_H2, METH_H2, X_SRB, X_IRB | `MIN()` is not a PHREEQC BASIC function. PHREEQC reads it as an undeclared array and it evaluates to 0 (checked: `PRINT MIN(3,5)` prints 0). So `lim = 0`, and `IF (moles > lim) THEN moles = lim` sets the reaction to 0. | The big one. Sulfate reduction, acetogenesis and formate formation run. H2 goes from 4.86 to 1.00 mol at day 180, pH rises from 6.79 to 7.01, and X_SRB stays near its seed instead of decaying to 1.7e-9 mol. |
+| 2 `fix2-end` | IR_H2, IR_AC, IR_FOR, METH_H2 | No `END` after `SAVE moles`, so the program runs on into `900 moles = 0 / 910 SAVE moles`. The last `SAVE` wins. | Only IR_H2 runs, because it is the only one of the four without `MIN`, and only for its 1e-8 mol (see issue 1 below). The others still hit fix 1's bug. |
+| 3 `fix3-cushion` | X_SRB, X_IRB lines 260 and 270 | The 0.9 cushion is applied twice, so the growth limit is 0.81 instead of 0.9. | None: `MIN` still makes the limit 0. The bug only matters once fix 1 is in. |
+| 4 `fix4-n2` | USER_PUNCH line 55 | `GAS("Ntg(g)")` is counted twice in `n_gas`. | Only the reported gas volume: 98.02 to 97.65 L. The chemistry is the same. |
+
+**All fixes together:** H2 ends at 0.66 mol instead of 1.00 mol with fix 1
+alone. Fix 2 lets METH_H2 run, which needs fix 1 as well, and adds IR_AC and
+IR_FOR.
 
 Not changed: SR_H2 has `200 SAVE moles` twice. It's harmless; the second
 line replaces the first.
 
-What the figure shows: in the original, sulfate reduction, iron reduction,
-acetogenesis, formate formation and methanogenesis are all exactly 0. H2
-barely moves (4.95 to 4.86 mol in 180 days). In the fixed model they run.
-
 ## Issues the fixes expose (not fixed)
 
 Fixing these takes model decisions, not just bug fixes, so they are left as
-they are. They make the fixed run behave in ways that are not physical:
+they are. They make the fixed runs behave in ways that are not physical:
 
 1. **`-m` caps the total progress of every rate.** PHREEQC stops a kinetic
    reaction when its reactant `m` reaches 0, and these rates are written as
@@ -64,7 +70,7 @@ they are. They make the fixed run behave in ways that are not physical:
    (5e-5 to 6.7e-4 mol). The reverse shuttle FORMATE_H2_EQ and ACETO_METH
    (-1 valence per mol) partly offset it later.
 3. **IR_* report a catabolic rate for reactions that don't run.** `PUT(r_exec,
-   201..203)` happens before the fall-through of bug 2 in the original, and
-   after the reactant is used up (issue 1) in the fixed model. X_IRB sees a
-   growth signal larger than its decay, wants to grow, is capped by the
-   available acetate (about 0) and stays at exactly 1e-8 mol in both runs.
+   201..203)` happens before the fall-through of fix 2's bug, and after the
+   reactant is used up (issue 1). X_IRB sees a growth signal larger than its
+   decay, wants to grow, is capped by the available acetate (about 0) and
+   stays at exactly 1e-8 mol in every run.

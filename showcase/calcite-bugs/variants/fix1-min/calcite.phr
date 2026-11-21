@@ -241,10 +241,10 @@ X_SRB
     # kinetics do not automatically enforce mass-balance safety for reactants in phreeqc therefore you we must do it ourself
     #lim means that the maximum number of moles that are allowed to react during current time step based on mass availability and stoichiometry
     # we multiply with 0.9 because,  0.9 is 90 % consumtion and avoding to consume 100 %, if we multiply with 1, a reactant consumed totaly in one time step in that case the concentrations drop to zero leading activities can become undefined charge balance or pH calculations can fail, CVODE may refuse the step
-    # FIX: MIN() is not a PHREEQC BASIC function (it evaluates to 0, so biomass can never grow)
-    # FIX: the 0.9 cushion was applied twice (0.81); it is applied once now
+    # FIX 1: MIN() is not a PHREEQC BASIC function; it evaluates to 0, so lim = 0 and the reaction never runs
     260 lim = lim_ac
-    262 IF (lim_dic < lim) THEN lim = lim_dic
+    261 IF (lim_dic < lim) THEN lim = lim_dic
+    262 lim = 0.9 * lim
     264 IF (lim_nh4 < lim) THEN lim = lim_nh4
     270 lim = 0.9 * lim
     280 IF ((-moles) > lim) THEN moles = -lim
@@ -285,8 +285,6 @@ IR_H2
 191 r_exec = moles / TIME
 192 PUT(r_exec, 201)
 200 SAVE moles
-# FIX: END was missing, so the run fell through to 900 and always saved 0
-210 END
 900 moles = 0
 910 SAVE moles
 -end
@@ -317,7 +315,7 @@ IR_AC
 # Convert to mol/s and apply stoich/availability limits
 150 r_mols = rate_c * vL
 160 # Stoich: 1 Acetate and 8 Fe(OH)3 per 1 "moles" of reaction
-# FIX: MIN() is not a PHREEQC BASIC function (it evaluates to 0, so lim = 0 and the reaction never runs)
+# FIX 1: MIN() is not a PHREEQC BASIC function; it evaluates to 0, so lim = 0 and the reaction never runs
 170 lim = ac*vL/1.0
 171 IF (mFe/8.0 < lim) THEN lim = mFe/8.0
 172 lim = 0.9 * lim
@@ -327,8 +325,6 @@ IR_AC
 191 r_exec = moles / TIME
 192 PUT(r_exec, 202)
 200 SAVE moles
-# FIX: END was missing, so the run fell through to 900 and always saved 0
-210 END
 900 moles = 0
 910 SAVE moles
 -end
@@ -358,7 +354,7 @@ IR_FOR
 # Convert to mol/s and apply stoich/availability limits
 150 r_mols = rate_c * vL
 160 # Stoich: 1 Formate and 2 Fe(OH)3 per 1 "moles" of reaction
-# FIX: MIN() is not a PHREEQC BASIC function (it evaluates to 0, so lim = 0 and the reaction never runs)
+# FIX 1: MIN() is not a PHREEQC BASIC function; it evaluates to 0, so lim = 0 and the reaction never runs
 170 lim = fo*vL/1.0
 171 IF (mFe/2.0 < lim) THEN lim = mFe/2.0
 172 lim = 0.9 * lim
@@ -368,8 +364,6 @@ IR_FOR
 191 r_exec = moles / TIME
 192 PUT(r_exec, 203)
 200 SAVE moles
-# FIX: END was missing, so the run fell through to 900 and always saved 0
-210 END
 900 moles = 0
 910 SAVE moles
 -end
@@ -425,10 +419,10 @@ X_IRB  # iron reduced biomass
     230 lim_ac  = (ac  * vL) / 2.5
     240 lim_dic = (dic * vL) / 2.5
     250 lim_nh4 = (nh4 * vL) / 1.0
-    # FIX: MIN() is not a PHREEQC BASIC function (it evaluates to 0, so biomass can never grow)
-    # FIX: the 0.9 cushion was applied twice (0.81); it is applied once now
+    # FIX 1: MIN() is not a PHREEQC BASIC function; it evaluates to 0, so lim = 0 and the reaction never runs
     260 lim = lim_ac
-    262 IF (lim_dic < lim) THEN lim = lim_dic
+    261 IF (lim_dic < lim) THEN lim = lim_dic
+    262 lim = 0.9 * lim
     264 IF (lim_nh4 < lim) THEN lim = lim_nh4
     270 lim = 0.9 * lim
     280 IF ((-moles) > lim) THEN moles = -lim
@@ -461,7 +455,7 @@ SR_AC
 # Convert to moles in this step: multiply by solution volume & elapsed time
 130 moles  = rate_c*vL*TIME
 # Stoichiometric safety: cannot consume more acetate than present nor more sulfate than present
-# FIX: MIN() is not a PHREEQC BASIC function (it evaluates to 0, so lim = 0 and the reaction never runs)
+# FIX 1: MIN() is not a PHREEQC BASIC function; it evaluates to 0, so lim = 0 and the reaction never runs
 140 lim = ac*vL
 141 IF (so4*vL < lim) THEN lim = so4*vL
 142 lim = 0.9 * lim
@@ -500,7 +494,7 @@ SR_FOR
 # Integrate to moles in current step
 130 moles  = rate_c*vL*TIME
 # Stoichiometric limit: SR_FOR consumes 4 mol formate per 1 mol sulfate-reduced
-# FIX: MIN() is not a PHREEQC BASIC function (it evaluates to 0, so lim = 0 and the reaction never runs)
+# FIX 1: MIN() is not a PHREEQC BASIC function; it evaluates to 0, so lim = 0 and the reaction never runs
 140 lim = (fo*vL)/4.0
 141 IF ((so4*vL) < lim) THEN lim = (so4*vL)
 142 lim = 0.9 * lim
@@ -597,7 +591,7 @@ SR_H2
 131 rate_c = rate_c * x
 # convert to moles this step
 140 r_mols = rate_c * vL
-# FIX: MIN() is not a PHREEQC BASIC function (it evaluates to 0, so lim = 0 and the reaction never runs)
+# FIX 1: MIN() is not a PHREEQC BASIC function; it evaluates to 0, so lim = 0 and the reaction never runs
 150 lim = (h2*vL)/4.0
 151 IF ((so4*vL) < lim) THEN lim = (so4*vL)
 152 lim = 0.9 * lim
@@ -638,7 +632,7 @@ ACETO_H2
 # Moles reacted this step
 140 r_mols = rate_c * vL
 # Stoichiometric limitation: 4 H2 per 1 Acetate; also limited by DIC
-# FIX: MIN() is not a PHREEQC BASIC function (it evaluates to 0, so lim = 0 and the reaction never runs)
+# FIX 1: MIN() is not a PHREEQC BASIC function; it evaluates to 0, so lim = 0 and the reaction never runs
 150 lim = (h2 * vL) / 4.0
 151 IF ((dic * vL) < lim) THEN lim = (dic * vL)
 152 lim = 0.9 * lim
@@ -675,7 +669,7 @@ FORMATE_H2
 # Moles this step
 140 r_mols = rate_c*vL
 # Stoichiometry: 1 H2 + 1 HCO3- per 1 Formate-
-# FIX: MIN() is not a PHREEQC BASIC function (it evaluates to 0, so lim = 0 and the reaction never runs)
+# FIX 1: MIN() is not a PHREEQC BASIC function; it evaluates to 0, so lim = 0 and the reaction never runs
 150 lim = (h2*vL)/1.0
 151 IF ((hco3*vL) < lim) THEN lim = (hco3*vL)
 152 lim = 0.9 * lim
@@ -714,7 +708,7 @@ METH_H2
 # Moles this step
 150 r_mols = rate_c*vL
 # Stoichiometry: 4 H2 per 1 CH4; also limited by CO2
-# FIX: MIN() is not a PHREEQC BASIC function (it evaluates to 0, so lim = 0 and the reaction never runs)
+# FIX 1: MIN() is not a PHREEQC BASIC function; it evaluates to 0, so lim = 0 and the reaction never runs
 160 lim = (h2*vL)/4.0
 161 IF ((co2*vL) < lim) THEN lim = (co2*vL)
 162 lim = 0.9 * lim
@@ -722,8 +716,6 @@ METH_H2
 180 IF (moles > lim) THEN moles = lim
 # Write result when active
 190 SAVE moles
-# FIX: END was missing, so the run fell through to 900 and always saved 0
-195 END
 900 moles = 0
 910 SAVE moles
 -end
@@ -765,7 +757,7 @@ USER_PUNCH
 30 x_irb   = KIN("X_IRB")               # mol (0 if not present)
 40 x_srb_L = x_srb / SOLN_VOL           # mol/L
 50 Ptot = PR_P("CO2(g)") + PR_P("Mtg(g)") + PR_P("Hdg(g)") + PR_P("H2S(g)") + PR_P("Ntg(g)")
-55 n_gas = GAS("Hdg(g)") + GAS("CO2(g)") + GAS("Mtg(g)") + GAS("Ntg(g)") + GAS("H2S(g)")   # FIX: Ntg(g) was counted twice
+55 n_gas = GAS("Hdg(g)") + GAS("CO2(g)") + GAS("Mtg(g)") + GAS("Ntg(g)") + GAS("H2S(g)")+ GAS("Ntg(g)")
 56 Vgas_L = n_gas * GAS_VM
 60 PUNCH t_d, -LA("H+"), Ptot, PR_P("Hdg(g)"), PR_P("CO2(g)"), PR_P("Mtg(g)"), GAS("Hdg(g)"), GAS("CO2(g)"), GAS("Mtg(g)"), TOT("S(6)"), TOT("Formate"), TOT("Acetate"), TOT("Ca"), TOT("Fe(2)"), x_srb, x_irb, x_srb_L, EQUI("Fe(OH)3(a)"), KIN("SR_H2"), KIN("SR_FOR"), KIN("SR_AC"), KIN("IR_H2"), KIN("IR_AC"), KIN("IR_FOR"), SOLN_VOL, Vgas_L, MOL("HS-"), MOL("HCO3-"), TOT("Na"), TOT("Mg"), TOT("Cl"), TOT("Ca"), TOT("S(6)")
 -end
