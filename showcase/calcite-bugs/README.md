@@ -11,6 +11,7 @@ variants/<name>/calcite.phr     each fix alone, and all fixes ("# FIX n:" marks 
 figures/fix1-min.png ...        one fix vs the original, side by side
 figures/all_fixes.png           the original, each fix alone and all fixes, side by side
 output/<name>.tsv               PHREEQC's selected output of every run
+LITERATURE.md                   the model checked against the Mura 2024, Mura 2025 and Muller 2024 papers
 ```
 
 In every figure the rows share one y axis, so a flat line in one column
