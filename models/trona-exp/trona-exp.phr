@@ -218,16 +218,16 @@ Trona-K
 Northupite
     -formula Na3Mg(CO3)2Cl
     -m0 {NORTHUPITE_MOLES}
-    -parms {NORTHUPITE_AREA}
+    -parms {NORTHUPITE_AREA} {WATER_VOLUME}
 Shortite
     -formula Na2Ca2(CO3)3
     -m0  {SHORTITE_MOLES}
-    -parms  {SHORTITE_AREA}
+    -parms  {SHORTITE_AREA} {WATER_VOLUME}
 
 Searlesite
     -formula NaBSi2O5(OH)2
     -m0 {SEARLESITE_MOLES}
-    -parms {SEARLESITE_AREA}
+    -parms {SEARLESITE_AREA} {WATER_VOLUME}
      
     
     
@@ -701,13 +701,14 @@ METH_H2
 Trona-K
 -start
  1 A0 = parm(1) # surface area of mineral
+ 2 V = PARM(2)
  10 K = tot("K") # this controls if SI runs out of water it goes to end 200
  20 if (K <= 0) then goto 200
  30 k1 = 3.52e-4  # reaction rate constant at 25 Celcius degree mol/m^2/s
  40 E = 20.233e3 # activation energy of that mineral J/mol
  50 R = 8.3145  # Universal gas constant J/mol/K/
  60 k2 = k1*exp(E/R*(1/TK - 1/298.15)) # reaction rate constant based on the temperature modification
- 70 rate = (A0)*(m/m0)^(2/3)*k2*(1 - SR("Trona-K")) # rate calculation (Lasaga 1984)
+ 70 rate = (A0/V)*(m/m0)^(2/3)*k2*(1 - SR("Trona-K")) # rate calculation (Lasaga 1984)
  80 moles = rate*time
  90 if (moles < 0) then goto 200
 200 SAVE moles

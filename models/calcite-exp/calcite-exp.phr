@@ -667,6 +667,7 @@ Calcite
 Illite
 -start
  1 A0 = parm(1)
+ 2 V = PARM(2)
  30 k1 = 6.6e-10
  40 E = 22e3
  50 R = 8.3145
