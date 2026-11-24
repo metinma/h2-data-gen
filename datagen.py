@@ -111,11 +111,11 @@ def load_config(path):
         },
         "plot": [
             {
-                "title": name.split(".", 1)[1],
-                "columns": items(cp[name]["columns"]),
-                "scale": cp[name].getfloat("scale"),
-                "multiply_by": cp[name].get("multiply_by", ""),
+                "title": cp[name]["title"],
                 "ylabel": cp[name]["ylabel"],
+                "series": {
+                    k: v for k, v in cp[name].items() if k not in ("title", "ylabel")
+                },
             }
             for name in cp.sections()
             if name.startswith("plot.")
@@ -437,6 +437,16 @@ def work(task):
     return res
 
 
+def evaluate(expr, col, data):
+    """Value of a plot formula over the output columns, e.g. "N2_cmol - 7"."""
+    env = {}
+    for name in sorted(col, key=len, reverse=True):
+        var = f"col{col[name]}"
+        expr = re.sub(rf"(?<![\w-]){re.escape(name)}(?![\w-])", var, expr)
+        env[var] = data[:, col[name]]
+    return np.broadcast_to(eval(expr, {"__builtins__": {}}, env), len(data))
+
+
 def plot_run(sim_id, col, data, path):
     panels = _W["plot"]
     t = data[:, col[_W["checks"]["time_column"]]]
@@ -447,14 +457,13 @@ def plot_run(sim_id, col, data, path):
     )
     fig.suptitle(f"Simulation {sim_id}", fontsize=14, fontweight="bold")
     for ax, panel in zip(axes.flat, panels):
-        factor = data[:, col[panel["multiply_by"]]] if panel["multiply_by"] else 1
-        for c in panel["columns"]:
-            ax.plot(t, data[:, col[c]] * factor * panel["scale"], label=c)
+        for label, expr in panel["series"].items():
+            ax.plot(t, evaluate(expr, col, data), label=label)
         ax.set_title(panel["title"])
         ax.set_xlabel("Time (days)")
         ax.set_ylabel(panel["ylabel"])
         ax.grid(True, linestyle="--", alpha=0.7)
-        if len(panel["columns"]) > 1:
+        if len(panel["series"]) > 1:
             ax.legend(loc="best", fontsize="small", ncol=2)
     for ax in list(axes.flat)[len(panels) :]:
         ax.set_visible(False)

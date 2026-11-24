@@ -91,7 +91,7 @@ models/<name>/runs/<timestamp>/
   PHREEQC's output (`.pqo`) of every simulation, plus a traceback when the
   script itself fails on a run.
 - **`plot/`** (debug only) holds one figure per simulation, laid out by the
-  `[plot.*]` sections.
+  `[plot.<n>]` sections.
 - **`report.txt`** has these sections:
   - *General Information*: template and `datagen.py` hashes (and git commit),
     PHREEQC version, start and finish time, settings, counts by status,
@@ -252,16 +252,15 @@ Checks on each completed run. A run that fails one is `flagged`.
 | `input_file` | Placeholders written to each input file, in this order. Must cover every placeholder in the template. |
 | `include_flagged` | `true` saves flagged runs in `input/` and `output/` instead of `failed/`. |
 
-### `[plot.<title>]`
+### `[plot.<n>]`
 
 One section per panel of the debug figure, in order, two panels per row.
 
 | Key | Meaning |
 |---|---|
-| `columns` | Output columns to plot against time. |
-| `multiply_by` | Optional column to multiply the values by, e.g. `Ptot_atm`. |
-| `scale` | Factor on the values, e.g. `1000` for mol to mmol. |
+| `title` | Panel title. |
 | `ylabel` | Y-axis label. |
+| any other key | One series: `name = formula`. The formula uses output columns and numbers, e.g. `N2_cmol - 7` or `Ca_mol * 1000`. Put spaces around operators. |
 
 ## Adding a model
 
