@@ -337,7 +337,9 @@ def run_phreeqc(text, tag):
             raise SimulationError(" | ".join(errors[:3]))
         if res.returncode != 0:
             raise SimulationError(f"PHREEQC exit code {res.returncode}")
-        version = re.search(r"\*\s*(PHREEQC[\w.\-]*)\s*\*", res.stdout + res.stderr + out)
+        version = re.search(
+            r"\*\s*(PHREEQC[\w.\-]*)\s*\*", res.stdout + res.stderr + out
+        )
         return (
             Path(tmp, "selected_output_1.sel").read_text(encoding=_W["encoding"]),
             version.group(1) if version else None,
@@ -391,7 +393,9 @@ def work(task):
         "phreeqc_version": None,
     }
     try:
-        sel, res["phreeqc_version"] = run_phreeqc(render(_W["template"], task["reps"]), tag)
+        sel, res["phreeqc_version"] = run_phreeqc(
+            render(_W["template"], task["reps"]), tag
+        )
         lines = sel.splitlines()
         headers = lines[0].split()
         data = np.array([[float(x) for x in ln.split()] for ln in lines[1:]])
@@ -563,7 +567,7 @@ def write_report(run_dir, cfg, meta, records, n_planned):
         f"Model encoding  => {cfg['run']['model_encoding']}",
         f"Workers         => {cfg['run']['workers']}",
         f"Timeout         => {cfg['run']['timeout_s']} s",
-        f"Gas             => {m['total_pressure_atm']} atm total, H2 {m['h2_pressure_atm']} atm, "
+        f"Gas             => {m['total_pressure_atm']} atm total, H2 {m['h2_pressure_atm']} atm, ",
         f"cushion gas {m['cushion_gas']}",
         f"Smoke test      => {meta['smoke']}",
         f"Simulations     => {len(records)} of {n_planned} finished",
@@ -606,17 +610,31 @@ def write_report(run_dir, cfg, meta, records, n_planned):
     lines = []
     for name, p in params.items():
         if p["distribution"] == "constant":
-            lines.append([name, "constant", "-", "-", _num(p["value"]), "", "", "", "", ""])
+            lines.append(
+                [name, "constant", "-", "-", _num(p["value"]), "", "", "", "", ""]
+            )
             continue
         bounds = (
             [_num(p["low"]), _num(p["high"])]
             if p["distribution"] not in COMPUTED
             else ["-", "-"]
         )
-        lines.append([name, p["distribution"], *bounds, *_stats(ok, name), *_stats(other, name)])
+        lines.append(
+            [name, p["distribution"], *bounds, *_stats(ok, name), *_stats(other, name)]
+        )
     out += _table(
-        ["parameter", "distribution", "low", "high",
-         "ok min", "ok median", "ok max", "other min", "other median", "other max"],
+        [
+            "parameter",
+            "distribution",
+            "low",
+            "high",
+            "ok min",
+            "ok median",
+            "ok max",
+            "other min",
+            "other median",
+            "other max",
+        ],
         lines,
     )
 
@@ -628,8 +646,15 @@ def write_report(run_dir, cfg, meta, records, n_planned):
         "",
     ]
     out += _table(
-        ["quantity", "ok min", "ok median", "ok max",
-         "other min", "other median", "other max"],
+        [
+            "quantity",
+            "ok min",
+            "ok median",
+            "ok max",
+            "other min",
+            "other median",
+            "other max",
+        ],
         [[k, *_stats(ok, k), *_stats(other, k)] for k in derived],
     )
 
@@ -660,8 +685,12 @@ def write_report(run_dir, cfg, meta, records, n_planned):
         out += _table(
             ["sim", "status", "runtime_s", *cols],
             [
-                [row["sim_id"], res["status"], f"{res['runtime_s']:.1f}",
-                 *[_num(row[c]) for c in cols]]
+                [
+                    row["sim_id"],
+                    res["status"],
+                    f"{res['runtime_s']:.1f}",
+                    *[_num(row[c]) for c in cols],
+                ]
                 for row, res in sorted(records, key=lambda r: r[0]["sim_id"])
             ],
         )
@@ -681,11 +710,17 @@ def code_version():
         git = ["git", "-C", str(path.parent)]
         commit = subprocess.run(
             git + ["rev-parse", "--short", "HEAD"],
-            capture_output=True, text=True, check=True, timeout=10,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=10,
         ).stdout.strip()
         dirty = subprocess.run(
             git + ["status", "--porcelain", "--", path.name],
-            capture_output=True, text=True, check=True, timeout=10,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=10,
         ).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         return text
@@ -848,7 +883,9 @@ def run_model(model_dir, cfg):
         "keep_initial_row": cfg["output"]["keep_initial_row"],
         "encoding": run["model_encoding"],
     }
-    usable = ("success", "flagged") if cfg["output"]["include_flagged"] else ("success",)
+    usable = (
+        ("success", "flagged") if cfg["output"]["include_flagged"] else ("success",)
+    )
 
     tasks = write_inputs(run_dir, rows, cfg)
     log.info("Wrote %d input files to %s", n, run_dir / "input")
