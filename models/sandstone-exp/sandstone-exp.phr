@@ -62,12 +62,12 @@ SOLUTION_SPECIES
 SOLUTION 1 Haymana baslangic sentetik akifer suyu
     temp       {TEMPERATURE}
     pressure   1
-    units      mol/kgw  # experiment (mg/L): Ca 4.11, Mg 40.10, Na 226.40, SO4 8.80, HCO3 146.40
+    units      mg/L
     pH         8
     Ca         {CA}
     Mg         {MG}
     Na         {NA}
-    S(6)       {S(6)}
+    S(6)       {S(6)} as SO4
    Alkalinity {HCO3} as HCO3
     Fe(2)      0.0
    # K          0.0
@@ -75,7 +75,7 @@ SOLUTION 1 Haymana baslangic sentetik akifer suyu
    # Si         0.0
     Formate    0
     Acetate    0
-    -water     {WATER_VOLUME}  # kg of water (0.2 in the experiment)
+    -water     {WATER_VOLUME}
 
 # Ferrihydrite is retained from the Haymana biological model as a tunable trace phase.
 # Set the amount to zero if no Fe(III) solid is supported by characterization.
@@ -84,13 +84,13 @@ EQUILIBRIUM_PHASES 1
 
 GAS_PHASE 1 Haymana deney baslangic gazi
  -fixed_volume
- -volume {GAS_VOLUME} # L of gas (0.3 in the experiment)
+ -volume {GAS_VOLUME} # mL reactor volume
  -temperature {TEMPERATURE}
  -pressure     60
  # Use reasonable "initial guesses". Partial pressures
  # PHREEQC will equilibrate them automatically.
 Mtg(g) {CH4}  # methane
- CO2(g) {CO2} # Carbondioxide
+ CO2(g) {CO2} # # Carbondioxide
  Hdg(g) 2 # 2 bar injected first hydrogen
  H2S(g) {H2S}      # hydrogen sulphate
  Ntg(g) {N2}       # 58 bar nitrogen added to the volume total pressure 2+58 = 60 bar
@@ -815,22 +815,22 @@ Montmor-Na
 200 SAVE moles
 -end
 EXCHANGE 1 Haymana_Na_yuklu_kil_yuzeyi
-    NaX    {NAX}  # mol (0.0005 for 50 g of rock in the experiment)
+    NaX    {NAX}
 #############################################
 # 8) Output 
 #############################################
 # ----------- Output & Graphs  -----------
 SELECTED_OUTPUT
- -reset false
+ -file haymana_simulation_results.txt 
+ -reset true
  -high_precision true
  -user_punch true
 USER_PUNCH
 -headings time_d pH Ptot_atm H2_cmol N2_cmol CO2_cmol CH4_cmol \
           H2N2_ratio H2_g_mol N2_g_mol CO2_g_mol CH4_g_mol \
           Ca_mgL Mg_mgL Na_mgL SO4_mgL Alk_HCO3_mgL \
-          SI_Quartz SI_Calcite SI_Albite SI_Kfeld Quartz_mol Calcite_mol Albite_mol Kfeld_mol Montmor_mol \
-          NaX_mol MgX2_mol CaX2_mol KX_mol Xfree_mol \
-          Chlorite_mol X_SRB_mol X_IRB_mol SR_H2 IR_H2 H2S_g_mol Water_kg
+          SI_Quartz SI_Calcite SI_Albite SI_Kfeld Quartz_mol Calcite_mol Albite_mol Kfeld_mol \
+          NaX_mol MgX2_mol CaX2_mol KX_mol Xfree_mol
 
 -start
 
@@ -872,9 +872,73 @@ USER_PUNCH
            Ca_mg, Mg_mg, Na_mg, SO4_mg, Alk_mg, \
            SI("Quartz"), SI("Calcite"), SI("Albite"), SI("K-feldspar"), \
            KIN("Quartz"), KIN("Calcite"), KIN("Albite"), KIN("K-feldspar"), KIN("Montmor-Na"), \
-           MOL("NaX"), MOL("MgX2"), MOL("CaX2"), MOL("KX"), MOL("X-"), \
-           KIN("Chlorite(14A)"), KIN("X_SRB"), KIN("X_IRB"), KIN("SR_H2"), KIN("IR_H2"), nH2S, TOT("water")
+           MOL("NaX"), MOL("MgX2"), MOL("CaX2"), MOL("KX"), MOL("X-")
 -end
 
 
+USER_GRAPH 1
+ -headings Time_d pH
+ -chart_title "pH"
+ -axis_titles "Time (days)" "pH"
+ -plot_concentration_vs x
+-start
+10 GRAPH_X TOTAL_TIME/86400.0
+20 GRAPH_Y -LA("H+")
+-end
+
+USER_GRAPH 2 # H2(g): model vs experiment
+-headings time_d H2_model N2_model CH4_model CO2_model H2S_model
+-chart_title " model (line) vs Experiments (symbols) "
+-axis_titles "Time (days)" "Gas (cmol)"
+-plot_concentration_vs time
+	  # Add the external TSV file (first column = time_d). This will add all series,
+  # modify the path below where you run your pheeqc model and the reading text file
+  -plot_tsv_file C:\Users\selcu\Documents\PHREEQC\H2_N2_expr\haymana\haymana_gaz.txt
+-start
+10  td = TOTAL_TIME/86400.0
+20  GRAPH_X td
+21  nH2  = GAS("Hdg(g)")
+22  nN2  = GAS("Ntg(g)")
+23  nCH4 = GAS("Mtg(g)")
+24  nCO2 = GAS("CO2(g)")
+25  nH2S = GAS("H2S(g)")
+26  ngas = nH2 + nN2 + nCH4 + nCO2 + nH2S
+27  IF (ngas <= 0) THEN ngas = 1e-30
+30  GRAPH_Y 100*nH2/ngas
+40  GRAPH_Y 100*nN2/ngas-7 # bu duzeltme  olcumlerde normalizasyon yapilmadigi icin eklendi, program toplam % 100 e tamamlayarak hesaplama yapiyor burada yuzde yuze tamamlanmadigi icin yaklasik 7 cmol/mol far var, normalize edildiginde hesaplanan oran 96.4%, bizim  olcumlerimizde normalize olmadan 90% civari, bu yuzden -7 uyguladik
+90  GRAPH_Y 100*nCH4/ngas
+95  GRAPH_Y 100*nCO2/ngas
+100 GRAPH_Y 100*nH2S/ngas
+-end
+
+
+USER_GRAPH 3 Biomass growth
+  -headings Time_d X_SRB_mol X_IRB_mol
+  -chart_title "Biomass (moles of kinetic reactant)"
+  -axis_titles "Time (days)" "Moles"
+  -plot_concentration_vs x
+  -connect_simulations true
+  -start
+10 GRAPH_X  TOTAL_TIME/86400.0     # time in days
+20 GRAPH_Y  KIN("X_SRB")           # SRB biomass (mol)
+30 GRAPH_Y  KIN("X_IRB")           # Fe-reducer biomass (mol), if defined
+  -end
+
+USER_GRAPH 4 # Aqueous species
+  -headings time_d Ca_model Mg_model Na_model SO4_model HCO3_model
+  -chart_title " model (line) vs Experiments (symbols)  "
+  -axis_titles "Time (days)" "Aqueous species (mg/L)"
+  -plot_concentration_vs time
+# Add the external TSV file (first column = time_d). This will add all series,
+# modify the path below where you run your pheeqc model and the reading text file
+-plot_tsv_file C:\Users\selcu\Documents\PHREEQC\H2_N2_expr\haymana\haymana_su_verileri.txt
+-start
+10  td = TOTAL_TIME/86400.0
+20  GRAPH_X td
+30 GRAPH_Y TOT("Ca")*40.078*1000
+40 GRAPH_Y TOT("Mg")*24.305*1000
+50 GRAPH_Y TOT("Na")*22.98*1000
+60 GRAPH_Y TOT("S(6)")*96.06*1000
+70 GRAPH_Y MOL("HCO3-")*61.01*1000 # ALK*61.01*1000
+-end
 END

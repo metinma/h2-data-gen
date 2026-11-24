@@ -24,7 +24,7 @@ python datagen.py
 
 This runs every model in `models/` whose config has `enabled = true`, one
 model after another. At the end it prints one line per model: `done`,
-`smoke test failed` or `disabled`.
+`done (smoke test failed)` or `disabled`.
 
 To run only some models, set `enabled = false` in the others.
 
@@ -85,9 +85,11 @@ models/<name>/runs/<timestamp>/
 
 - **Input files** have one `{PLACEHOLDER} value` line per entry of
   `input_file` in `[output]`. The values are the exact text PHREEQC was given.
-- **Output files** are tab-separated, with a header line and one row per
-  kinetic step. The columns are the template's `USER_PUNCH -headings`, plus
-  any `<gas>_bar` columns (see `gas_moles_columns`), minus any in `drop_columns`.
+- **Output files** are PHREEQC's selected output file, byte for byte as
+  PHREEQC wrote it: the file named by `-file` in the template's
+  `SELECTED_OUTPUT` block (`selected_output_1.sel` when there is none), with
+  every row and column PHREEQC gives, including the initial-solution row.
+  The script only reads it, for the checks and the plots.
 - **`logs/`** (debug only) holds the filled-in PHREEQC input (`.pqi`) and
   PHREEQC's output (`.pqo`) of every simulation, plus a traceback when the
   script itself fails on a run.
@@ -123,10 +125,10 @@ Every simulation ends in one of four states:
 ### Smoke test
 
 With `smoke_test = true`, the script first runs one simulation with every
-sampled parameter at the median of its distribution. If that run isn't a
-`success`, the model is skipped: its run folder keeps the input files and a
-report saying why, and the script moves on to the next model. If it passes,
-the log shows its runtime and a rough estimate for the whole batch.
+sampled parameter at the median of its distribution. Its result goes into
+the log and the report. If it passes, the log shows its runtime and a rough
+estimate for the whole batch. If it fails, the log says why and the batch
+runs anyway: a failing model is a result too.
 
 ## The config file
 
@@ -251,10 +253,7 @@ Checks on each completed run. A run that fails one is `flagged`.
 | Key | Meaning |
 |---|---|
 | `input_file` | Placeholders written to each input file, in this order. Must cover every placeholder in the template. |
-| `drop_columns` | Output columns left out of the output files. |
 | `include_flagged` | `true` saves flagged runs in `input/` and `output/` instead of `failed/`. |
-| `keep_initial_row` | `true` also keeps PHREEQC's t = 0 row. That row is the initial-solution calculation, done before the gas phase and kinetics exist, so it is dropped by default. |
-| `total_pressure_column`, `gas_moles_columns` | Optional. Adds one `<gas>_bar` column per gas moles column (named up to its first `_`, e.g. `H2_g_mol` → `H2_bar`): the gas's share of the listed moles times the total pressure column (atm), in bar. Leave out or empty to add nothing. |
 
 ### `[plot.<title>]`
 
@@ -262,7 +261,9 @@ One section per panel of the debug figure, in order, two panels per row.
 
 | Key | Meaning |
 |---|---|
-| `columns` | Output columns to plot against time. |
+| `columns` | Output columns to plot against time. A value PHREEQC printed without a heading is named `unnamed_<column number>`. |
+| `labels` | Optional legend names, one per column. Default: the column names. |
+| `multiply_by` | Optional column to multiply each value by, row by row, e.g. `Ptot_atm` to turn cmol/mol into a partial pressure. |
 | `scale` | Factor on the values, e.g. `1000` for mol to mmol. |
 | `ylabel` | Y-axis label. |
 
@@ -275,6 +276,6 @@ One section per panel of the debug figure, in order, two panels per row.
 2. Copy the `config.cfg` of the most similar model and edit it: the
    parameters and their ranges, the minerals, `input_file`, and the checks
    and plots for the template's output columns.
-3. Set `model_encoding` to the template's encoding. The existing templates
-   are UTF-8.
+3. Set `model_encoding` to the template's encoding. The `-exp` templates
+   keep the base models' Windows-1254 (`cp1254`); the others are UTF-8.
 4. Try it with a small `n_simulations` and `debug = true` before a full run.

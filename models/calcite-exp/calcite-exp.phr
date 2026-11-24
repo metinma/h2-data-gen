@@ -1,14 +1,14 @@
 #TITLE Calcite Midyat formation
 #roughly 50 grams in a reactor and each mineral has spherical surface, 
-#	Quartz d=200" 					" Âµm, density=2650" 					" kg" " m^(-3)
-#	Calcite d=100" 					" Âµm, density=2710" 					" kg" " m^(-3)
-#	Pyrite d=10" 					" Âµm, density=5000" 					" kg" " m^(-3)
-#	Barite d=10" 					" Âµm, density=4500" 					" kg" " m^(-3)
-#	Clay (illite proxy) d=1" 			" Âµm, density=2700" 					" kg" " m^(-3)
+#	Quartz d=200" 					" µm, density=2650" 					" kg" " m^(-3)
+#	Calcite d=100" 					" µm, density=2710" 					" kg" " m^(-3)
+#	Pyrite d=10" 					" µm, density=5000" 					" kg" " m^(-3)
+#	Barite d=10" 					" µm, density=4500" 					" kg" " m^(-3)
+#	Clay (illite proxy) d=1" 			" µm, density=2700" 					" kg" " m^(-3)
 # This gives the initial moles and surface areas (scales linearly with M_"rock" and inversely with d_i):
-# Mineral	     Mass (kg)	Moles	Surface area (mÂ²)
-# Calcite (100Â %)		  0.499	        1.1
-# Total	Â—	
+# Mineral	     Mass (kg)	Moles	Surface area (m²)
+# Calcite (100 %)		  0.499	        1.1
+# Total	—	
 #############################################
 # 0) Extend database for acetate & formate
 #############################################
@@ -28,35 +28,35 @@ SOLUTION_SPECIES
 #############################################
 # 1) Aqueous solution at the START 
 #############################################
-SOLUTION 1 # Midyat baslangiÃ§ sentetik akifer suyu
+SOLUTION 1 # Midyat baslangiç sentetik akifer suyu
     temp       {TEMPERATURE}
     pressure   1
-    units      mol/kgw  # base (mg/L): Ca 22.67, Mg 21.89, Na 129.30, SO4 218.80, HCO3 122.00
+    units      mg/L
     pH         7.65 
     Ca         {CA}
     Mg         {MG}
     Na         {NA}
-    S(6)       {S(6)}
+    S(6)       {S(6)} as SO4
     Alkalinity {HCO3} as HCO3
     Fe(2)      0.0
     Formate    0
     Acetate    0
-    -water     {WATER_VOLUME}  # kg of water (0.2 in the base model)
+    -water     {WATER_VOLUME}
 
  #Stoichiometry (balanced):
 #Fe(OH)3(s) + 0.5 H2 + 2 H+ Fe(2) + 3 H2O
 EQUILIBRIUM_PHASES 1
   Fe(OH)3(a)  0  0 #0.001   # 0.001 mmol ferrihydrite available to be reduced (tune)
 
-GAS_PHASE 1 Midyat deney baslangiÃ§ gazi
+GAS_PHASE 1 Midyat deney baslangiç gazi
  -fixed_volume
- -volume {GAS_VOLUME} # L of gas (0.3 in the base model)
+ -volume {GAS_VOLUME} # mL reactor volume
  -temperature {TEMPERATURE}
  -pressure     60
  # Use reasonable "initial guesses". Partial pressures
  # PHREEQC will equilibrate them automatically.
 Mtg(g) {CH4}  # methane
- CO2(g) {CO2} # Carbondioxide
+ CO2(g) {CO2} # # Carbondioxide
  Hdg(g) 2 # 2 bar injected first hydrogen
  H2S(g) {H2S}      # hydrogen sulphate
  Ntg(g) {N2}       # 58 bar nitrogen added to the volume total pressure 2+58 = 60 bar
@@ -64,7 +64,7 @@ Mtg(g) {CH4}  # methane
  
 #############################################
 # 4) Gas phase AFTER mixing
-# Reconstructed at 60 bar (59.2 atm), 0.30 L, 36Â°C
+# Reconstructed at 60 bar (59.2 atm), 0.30 L, 36°C
 #
 # We use Mtg(g) for methane.
 # Partitioning will occur automatically during KINETICS.
@@ -173,7 +173,7 @@ X_IRB
   
  #Gypsum
  #   -m 0.01
- #   # Stoichiometry for CaSO4Â·2H2O in elemental terms:
+ #   # Stoichiometry for CaSO4·2H2O in elemental terms:
  #   # Ca 1, S 1, O total 6 (SO4 -> O4; 2H2O -> H4 O2 => total O6, H4)
  #   -formula Ca 1 S 1 O 6 H 4
  #   # Parameters ( area A0 and a small reference "reactor" volume fraction)
@@ -710,7 +710,7 @@ Illite
 #-start
 #  1 A0 = parm(1)
 #  2 V  = parm(2)
-# 10 k25 = 0.0016       # mol m^-2 s^-1 at 25Â°C (tune; start conservative)
+# 10 k25 = 0.0016       # mol m^-2 s^-1 at 25°C (tune; start conservative)
 # 20 Ea  = 35e3             # J/mol, apparent activation energy (tune if needed)
 # 30 Rg  = 8.3145
 # 40 kT  = k25*EXP(Ea/Rg*(1/TK - 1/298.15))
@@ -724,15 +724,15 @@ Illite
 #############################################
 # ----------- Output & Graphs  -----------
 SELECTED_OUTPUT
- -reset false
+ -file midyat_simulation_results.txt 
+ -reset true
  -high_precision true
  -user_punch true
 USER_PUNCH
 -headings time_d pH Ptot_atm H2_cmol N2_cmol CO2_cmol CH4_cmol \
           H2N2_ratio H2_g_mol N2_g_mol CO2_g_mol CH4_g_mol \
           Ca_mgL Mg_mgL Na_mgL SO4_mgL Alk_HCO3_mgL \
-          SI_Calcite Calcite_mol \
-          Illite_mol X_SRB_mol X_IRB_mol SR_H2 IR_H2 H2S_g_mol Water_kg
+          SI_Calcite Calcite_mol
 
 -start
 
@@ -759,22 +759,84 @@ USER_PUNCH
 150 Ptot = PR_P("Hdg(g)") + PR_P("Ntg(g)") + \
            PR_P("CO2(g)") + PR_P("Mtg(g)") + PR_P("H2S(g)")
 
-# mol/kgw -> mg/L yaklasik dÃ¶nÃ¼sÃ¼mleri
+# mol/kgw -> mg/L yaklasik dönüsümleri
 160 Ca_mg  = TOT("Ca")*40.078*1000
 170 Mg_mg  = TOT("Mg")*24.305*1000
 180 Na_mg  = TOT("Na")*22.9898*1000
 190 SO4_mg = TOT("S(6)")*96.06*1000
 
-# Toplam alkaliniteyi HCO3 esdegeri olarak yaklasik gÃ¶sterim
+# Toplam alkaliniteyi HCO3 esdegeri olarak yaklasik gösterim
 200 Alk_mg = ALK*61.016*1000
 
 210 PUNCH td, -LA("H+"), Ptot, \
            yH2, yN2, yCO2, yCH4, ratio, \
            nH2, nN2, nCO2, nCH4, \
            Ca_mg, Mg_mg, Na_mg, SO4_mg, Alk_mg, \
-           SI("Calcite"), KIN("Calcite"), \
-           KIN("Illite"), KIN("X_SRB"), KIN("X_IRB"), KIN("SR_H2"), KIN("IR_H2"), nH2S, TOT("water")
+           SI("Calcite"), KIN("Calcite")
 -end
 
 
+USER_GRAPH 1
+ -headings Time_d pH
+ -chart_title "pH"
+ -axis_titles "Time (days)" "pH"
+ -plot_concentration_vs x
+-start
+10 GRAPH_X TOTAL_TIME/86400.0
+20 GRAPH_Y -LA("H+")
+-end
+
+USER_GRAPH 2 # H2(g): model vs experiment
+-headings time_d H2_model N2_model CH4_model CO2_model H2S_model
+-chart_title "Model composition (line) vs Experiments (symbols)"
+-axis_titles "Time (days)" "Gas (cmol/mol)"
+-plot_concentration_vs time
+  # External TSV must contain measured cmol/mol values.
+  -plot_tsv_file C:\Users\selcu\Documents\PHREEQC\H2_N2_expr\midyat\kalsit_gaz.txt
+-start
+10  td = TOTAL_TIME/86400.0
+20  GRAPH_X td
+21  nH2  = GAS("Hdg(g)")
+22  nN2  = GAS("Ntg(g)")
+23  nCH4 = GAS("Mtg(g)")
+24  nCO2 = GAS("CO2(g)")
+25  nH2S = GAS("H2S(g)")
+26  ngas = nH2 + nN2 + nCH4 + nCO2 + nH2S
+27  IF (ngas <= 0) THEN ngas = 1e-30
+30  GRAPH_Y 100*nH2/ngas
+40  GRAPH_Y 100*nN2/ngas-7 # bu düzeltme ölçümlerde normalizasyon yapilmadigi için eklendi, program toplam % 100 e tamamlayarak hesaplama yapiyor burada yüzde yüze tamamlanmadigi için yaklasik 7 cmol/mol far var, normalize edildiginde hesaplanan oran 96.4%, bizim ölçümlerimizde normalize olmadan 90% civari, bu yüzden -7 uyguladik
+90  GRAPH_Y 100*nCH4/ngas
+95  GRAPH_Y 100*nCO2/ngas
+100 GRAPH_Y 100*nH2S/ngas
+-end
+
+USER_GRAPH 3 Biomass growth
+  -headings Time_d X_SRB_mol X_IRB_mol
+  -chart_title "Biomass (moles of kinetic reactant)"
+  -axis_titles "Time (days)" "Moles"
+  -plot_concentration_vs x
+  -connect_simulations true
+  -start
+10 GRAPH_X  TOTAL_TIME/86400.0     # time in days
+20 GRAPH_Y  KIN("X_SRB")           # SRB biomass (mol)
+30 GRAPH_Y  KIN("X_IRB")           # Fe-reducer biomass (mol), if defined
+  -end
+
+USER_GRAPH 4 # Aqueous species
+  -headings time_d Ca_model Mg_model Na_model SO4_model HCO3_model
+  -chart_title " model (line) vs Experiments (symbols)  "
+  -axis_titles "Time (days)" "Aqueous species (mg/L)"
+  -plot_concentration_vs time
+# Add the external TSV file (first column = time_d). This will add all series,
+# modify the path below where you run your pheeqc model and the reading text file
+-plot_tsv_file C:\Users\selcu\Documents\PHREEQC\H2_N2_expr\midyat\kalsit_su_verileri.txt
+-start
+10  td = TOTAL_TIME/86400.0
+20  GRAPH_X td
+30 GRAPH_Y TOT("Ca")*40.078*1000
+40 GRAPH_Y TOT("Mg")*24.305*1000
+50 GRAPH_Y TOT("Na")*22.98*1000
+60 GRAPH_Y TOT("S(6)")*96.06*1000
+70 GRAPH_Y   MOL("HCO3-")*61.01*1000 # ALK*61.01*1000  
+-end
 END

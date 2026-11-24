@@ -68,18 +68,18 @@ SOLUTION 1
     pressure   1
 #    Acetate 0
 #    Formate 0
-    -water     {WATER_VOLUME}  # kg of water (1e-3 in the base model)
+    -water     {WATER_VOLUME}
 
 
 GAS_PHASE 1
  -fixed_volume
- -volume {GAS_VOLUME} # L of gas (0.48 in the base model)
+ -volume {GAS_VOLUME} # mL reactor volume
  -temperature {TEMPERATURE}
  -pressure     60
  # Use reasonable "initial guesses". Partial pressures
  # PHREEQC will equilibrate them automatically.
 Mtg(g) {CH4}  # methane
-CO2(g) {CO2} # Carbondioxide
+CO2(g) {CO2} # # Carbondioxide
  Hdg(g) 2 # 2 bar injected first hydrogen
  H2S(g) {H2S}     # hydrogen sulphate
  Ntg(g) {N2}       # 58 bar nitrogen added to the volume total pressure 2+58 = 60 bar
@@ -92,7 +92,7 @@ EQUILIBRIUM_PHASES 1
 
 #############################################
 # 4) Gas phase AFTER mixing
-# Reconstructed at 60 bar (59.2 atm), 0.30 L, 36Â°C
+# Reconstructed at 60 bar (59.2 atm), 0.30 L, 36°C
 #
 # We use Mtg(g) for methane.
 # Partitioning will occur automatically during KINETICS.
@@ -217,23 +217,23 @@ Trona-K
   -parms {ILLITE_AREA} {WATER_VOLUME}
 Northupite
     -formula Na3Mg(CO3)2Cl
-    -m0 {NORTHUPITE_MOLES}
-    -parms {NORTHUPITE_AREA} {WATER_VOLUME}
+    -m0 {NORTHUPITE_MOLES}      
+    -parms {NORTHUPITE_AREA} {WATER_VOLUME}  
 Shortite
     -formula Na2Ca2(CO3)3
-    -m0  {SHORTITE_MOLES}
-    -parms  {SHORTITE_AREA} {WATER_VOLUME}
+    -m0  {SHORTITE_MOLES}    
+    -parms  {SHORTITE_AREA} {WATER_VOLUME} 
 
 Searlesite
     -formula NaBSi2O5(OH)2
-    -m0 {SEARLESITE_MOLES}
-    -parms {SEARLESITE_AREA} {WATER_VOLUME}
+    -m0 {SEARLESITE_MOLES}     
+    -parms {SEARLESITE_AREA} {WATER_VOLUME}  
      
     
     
  #Gypsum
  #   -m 0.01
- #   # Stoichiometry for CaSO4Â·2H2O in elemental terms:
+ #   # Stoichiometry for CaSO4·2H2O in elemental terms:
  #   # Ca 1, S 1, O total 6 (SO4 -> O4; 2H2O -> H4 O2 => total O6, H4)
  #   -formula Ca 1 S 1 O 6 H 4
  #   # Parameters ( area A0 and a small reference "reactor" volume fraction)
@@ -250,11 +250,11 @@ REACTION_TEMPERATURE 1
 # RATES ( parameters updated to p_fit from MATLAB)
 # Time windows shifted:
 # t=0 in this file = real day 9
-# SR: 0Â–6 days  (ignored)
-# Aceto: 0Â–96 days
-# Formate:0Â–96 days
-# Meth: 26Â–96 days
-# Water add event at t=8 days ignored (was 17Â–17.1 days)
+# SR: 0–6 days  (ignored)
+# Aceto: 0–96 days
+# Formate:0–96 days
+# Meth: 26–96 days
+# Water add event at t=8 days ignored (was 17–17.1 days)
 #############################################
 RATES 1
 RATES 1
@@ -825,7 +825,7 @@ Searlesite
 #-start
 #  1 A0 = parm(1)
 #  2 V  = parm(2)
-# 10 k25 = 0.0016       # mol m^-2 s^-1 at 25Â°C (tune; start conservative)
+# 10 k25 = 0.0016       # mol m^-2 s^-1 at 25°C (tune; start conservative)
 # 20 Ea  = 35e3             # J/mol, apparent activation energy (tune if needed)
 # 30 Rg  = 8.3145
 # 40 kT  = k25*EXP(Ea/Rg*(1/TK - 1/298.15))
@@ -839,15 +839,14 @@ Searlesite
 #############################################
 # ----------- Output & Graphs  -----------
 SELECTED_OUTPUT
- -reset false
+ -file trona_simulation_results.txt 
+ -reset true
  -high_precision true
  -user_punch true
 USER_PUNCH
 -headings time_d pH Ptot_atm H2_cmol N2_cmol CO2_cmol CH4_cmol \
           H2N2_ratio H2_g_mol N2_g_mol CO2_g_mol CH4_g_mol \
-          SI_Trona-K Trona-K_mol \
-          Quartz_mol Illite_mol Northupite_mol Shortite_mol Searlesite_mol \
-          X_SRB_mol X_IRB_mol SR_H2 IR_H2 H2S_g_mol Water_kg
+          SI_Trona-K Trona-K_mol
 
 -start
 
@@ -878,11 +877,56 @@ USER_PUNCH
 210 PUNCH td, -LA("H+"), Ptot, \
            yH2, yN2, yCO2, yCH4, ratio, \
            nH2, nN2, nCO2, nCH4, \
-           SI("Trona-K"), KIN("Trona-K"), \
-           KIN("Quartz"), KIN("Illite"), KIN("Northupite"), KIN("Shortite"), KIN("Searlesite"), \
-           KIN("X_SRB"), KIN("X_IRB"), KIN("SR_H2"), KIN("IR_H2"), nH2S, TOT("water")
+           SI("Trona-K"), KIN("Trona-K")
 -end
 
+
+#USER_GRAPH 1
+# -headings Time_d pH
+# -chart_title "pH"
+# -axis_titles "Time (days)" "pH"
+# -plot_concentration_vs x
+#-start
+#10 GRAPH_X TOTAL_TIME/86400.0
+#20 GRAPH_Y -LA("H+")
+#-end
+
+USER_GRAPH 2 # H2(g): model vs experiment
+-headings time_d H2_model N2_model CH4_model CO2_model H2S_model
+-chart_title " model (line) vs Experiments (symbols) "
+-axis_titles "Time (days)" "Gas (cmol)"
+-plot_concentration_vs time
+	  # Add the external TSV file (first column = time_d). This will add all series,
+  # modify the path below where you run your pheeqc model and the reading text file
+  -plot_tsv_file C:\Users\selcu\Documents\PHREEQC\H2_N2_expr\trona\trona_gaz.txt
+-start
+10  td = TOTAL_TIME/86400.0
+20  GRAPH_X td
+21  nH2  = GAS("Hdg(g)")
+22  nN2  = GAS("Ntg(g)")
+23  nCH4 = GAS("Mtg(g)")
+24  nCO2 = GAS("CO2(g)")
+25  nH2S = GAS("H2S(g)")
+26  ngas = nH2 + nN2 + nCH4 + nCO2 + nH2S
+27  IF (ngas <= 0) THEN ngas = 1e-30
+30  GRAPH_Y 100*nH2/ngas
+40  GRAPH_Y 100*nN2/ngas-7 # bu düzeltme ölçümlerde normalizasyon yapilmadigi için eklendi, program toplam % 100 e tamamlayarak hesaplama yapiyor burada yüzde yüze tamamlanmadigi için yaklasik 7 cmol/mol far var, normalize edildiginde hesaplanan oran 96.4%, bizim ölçümlerimizde normalize olmadan 90% civari, bu yüzden -7 uyguladik
+90  GRAPH_Y 100*nCH4/ngas
+95  GRAPH_Y 100*nCO2/ngas
+100 GRAPH_Y 100*nH2S/ngas
+
+
+USER_GRAPH 3 Biomass growth
+  -headings Time_d X_SRB_mol X_IRB_mol
+  -chart_title "Biomass (moles of kinetic reactant)"
+  -axis_titles "Time (days)" "Moles"
+  -plot_concentration_vs x
+  -connect_simulations true
+  -start
+10 GRAPH_X  TOTAL_TIME/86400.0     # time in days
+20 GRAPH_Y  KIN("X_SRB")           # SRB biomass (mol)
+30 GRAPH_Y  KIN("X_IRB")           # Fe-reducer biomass (mol), if defined
+  -end
 
 END    
 

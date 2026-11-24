@@ -107,17 +107,15 @@ def load_config(path):
         },
         "output": {
             "input_file": items(out["input_file"]),
-            "drop_columns": items(out["drop_columns"]),
             "include_flagged": out.getboolean("include_flagged"),
-            "keep_initial_row": out.getboolean("keep_initial_row"),
-            "total_pressure_column": out.get("total_pressure_column", ""),
-            "gas_moles_columns": items(out.get("gas_moles_columns", "")),
         },
         "plot": [
             {
                 "title": name.split(".", 1)[1],
                 "columns": items(cp[name]["columns"]),
                 "scale": cp[name].getfloat("scale"),
+                "multiply_by": cp[name].get("multiply_by", ""),
+                "labels": items(cp[name].get("labels", "")),
                 "ylabel": cp[name]["ylabel"],
             }
             for name in cp.sections()
@@ -308,7 +306,8 @@ def run_phreeqc(text, tag):
     logs = Path(_W["run_dir"]) / "logs"
     with tempfile.TemporaryDirectory() as tmp:
         pqi, pqo = os.path.join(tmp, "model.pqi"), os.path.join(tmp, "model.pqo")
-        Path(pqi).write_text(text, encoding=_W["encoding"])
+        with open(pqi, "w", encoding=_W["encoding"], newline="") as f:
+            f.write(text)
         if _W["debug"]:
             shutil.copyfile(pqi, logs / f"{tag}_input.pqi")
 
@@ -324,11 +323,11 @@ def run_phreeqc(text, tag):
         except subprocess.TimeoutExpired:
             raise SimulationError(f"timeout after {_W['timeout']} s")
 
-        out = Path(pqo).read_text(encoding=_W["encoding"])
+        out = Path(pqo).read_text(encoding=_W["encoding"], errors="replace")
         if _W["debug"]:
-            (logs / f"{tag}_output.pqo").write_text(
-                out + res.stderr, encoding=_W["encoding"]
-            )
+            shutil.copyfile(pqo, logs / f"{tag}_output.pqo")
+            if res.stderr.strip():
+                (logs / f"{tag}_stderr.txt").write_text(res.stderr, encoding="utf-8")
 
         errors = [
             ln.strip()
@@ -343,9 +342,40 @@ def run_phreeqc(text, tag):
             r"\*\s*(PHREEQC[\w.\-]*)\s*\*", res.stdout + res.stderr + out
         )
         return (
-            Path(tmp, "selected_output_1.sel").read_text(encoding=_W["encoding"]),
+            Path(tmp, _W["selected_output"]).read_bytes(),
             version.group(1) if version else None,
         )
+
+
+def selected_output_name(template):
+    """File PHREEQC writes the selected output to: the SELECTED_OUTPUT block's
+    -file, or PHREEQC's default name when the template sets none."""
+    block = re.search(
+        r"^\s*SELECTED_OUTPUT\b(.*?)(?=^\s*[A-Z_]{4,}\b)", template, re.M | re.S
+    )
+    name = block and re.search(r"^\s*-file\s+(\S+)", block.group(1), re.M)
+    return name.group(1) if name else "selected_output_1.sel"
+
+
+def parse_selected_output(raw):
+    """Header names and a float array (NaN for text cells) from PHREEQC's
+    tab-separated selected output. A value without a heading gets the name
+    unnamed_<column number>."""
+    lines = [ln for ln in raw.decode(_W["encoding"], "replace").splitlines() if ln.strip()]
+    split = [[c.strip() for c in ln.rstrip("\t ").split("\t")] for ln in lines]
+    width = max(len(r) for r in split)
+    headers = split[0] + [f"unnamed_{i + 1}" for i in range(len(split[0]), width)]
+
+    def num(c):
+        try:
+            return float(c)
+        except ValueError:
+            return np.nan
+
+    data = np.full((len(split) - 1, width), np.nan)
+    for i, row in enumerate(split[1:]):
+        data[i, : len(row)] = [num(c) for c in row]
+    return headers, data
 
 
 def first_step(time_column):
@@ -382,24 +412,6 @@ def quality_issues(col, data):
     return issues
 
 
-ATM_TO_BAR = 1.01325
-
-
-def add_partial_pressures(headers, data):
-    """Append <gas>_bar columns: each gas's share of the moles times the total
-    pressure, in bar. <gas> is the moles column's name up to its first "_"."""
-    gas_cols = _W["gas_moles_columns"]
-    if not gas_cols:
-        return headers, data
-    col = {h: i for i, h in enumerate(headers)}
-    moles = data[:, [col[c] for c in gas_cols]]
-    total = moles.sum(axis=1, keepdims=True)
-    total[total <= 0] = np.inf
-    p_bar = moles / total * data[:, [col[_W["total_pressure_column"]]]] * ATM_TO_BAR
-    names = [c.split("_", 1)[0] + "_bar" for c in gas_cols]
-    return headers + names, np.hstack([data, p_bar])
-
-
 def work(task):
     """Run one simulation. Returns a result dict; errors become a failed status."""
     sim_id, tag = task["sim_id"], task["tag"]
@@ -409,17 +421,17 @@ def work(task):
         "status": "failed",
         "message": "",
         "headers": None,
-        "data": None,
+        "raw": None,
+        "n_rows": 0,
         "phreeqc_version": None,
     }
     try:
-        sel, res["phreeqc_version"] = run_phreeqc(
+        raw, res["phreeqc_version"] = run_phreeqc(
             render(_W["template"], task["reps"]), tag
         )
-        lines = sel.splitlines()
-        headers = lines[0].split()
-        data = np.array([[float(x) for x in ln.split()] for ln in lines[1:]])
-        headers, data = add_partial_pressures(headers, data)
+        res["raw"] = raw
+        headers, data = parse_selected_output(raw)
+        res["n_rows"] = len(data)
         col = {h: i for i, h in enumerate(headers)}
         chk = _W["checks"]
 
@@ -434,7 +446,6 @@ def work(task):
         res["status"] = "flagged" if issues else "success"
         res["message"] = "; ".join(issues)
         res["headers"] = headers
-        res["data"] = data if _W["keep_initial_row"] else kinetic
 
         if _W["debug"]:
             plot_run(
@@ -465,8 +476,10 @@ def plot_run(sim_id, col, data, path):
     )
     fig.suptitle(f"Simulation {sim_id}", fontsize=14, fontweight="bold")
     for ax, panel in zip(axes.flat, panels):
-        for c in panel["columns"]:
-            ax.plot(t, data[:, col[c]] * panel["scale"], label=c)
+        factor = data[:, col[panel["multiply_by"]]] if panel["multiply_by"] else 1
+        labels = panel["labels"] or panel["columns"]
+        for c, label in zip(panel["columns"], labels):
+            ax.plot(t, data[:, col[c]] * factor * panel["scale"], label=label)
         ax.set_title(panel["title"])
         ax.set_xlabel("Time (days)")
         ax.set_ylabel(panel["ylabel"])
@@ -485,24 +498,11 @@ def write_input(path, reps, keys):
     path.write_text("".join(f"{k} {reps[k]}\n" for k in keys), encoding="utf-8")
 
 
-def write_output(path, headers, data, drop):
-    keep = [i for i, h in enumerate(headers) if h not in drop]
-    lines = ["\t".join(headers[i] for i in keep)]
-    lines += ["\t".join(f"{v:.12e}" for v in line[keep]) for line in data]
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
 def save_result(run_dir, task, res, cfg, usable):
     """Write the output of a usable run; move the input file of any other run."""
     tag = task["tag"]
     if res["status"] in usable:
-        write_output(
-            run_dir / "output" / f"{tag}_output.txt",
-            res["headers"],
-            res["data"],
-            set(cfg["output"]["drop_columns"]),
-        )
-        res["n_rows"] = len(res["data"])
+        (run_dir / "output" / f"{tag}_output.txt").write_bytes(res["raw"])
     else:
         shutil.move(
             run_dir / "input" / f"{tag}_input.txt",
@@ -600,7 +600,8 @@ def write_report(run_dir, cfg, meta, records, n_planned):
             f"Runtime per sim => median {np.median(runtimes):.1f} s, "
             f"max {max(runtimes):.1f} s, total {sum(runtimes) / 3600:.2f} CPU h"
         )
-    saved = [res for _, res in records if res.get("n_rows")]
+    usable = ("success", "flagged") if cfg["output"]["include_flagged"] else ("success",)
+    saved = [res for _, res in records if res["status"] in usable]
     if saved:
         n_rows = [res["n_rows"] for res in saved]
         rows_text = (
@@ -609,8 +610,8 @@ def write_report(run_dir, cfg, meta, records, n_planned):
             else f"{min(n_rows)} to {max(n_rows)} rows"
         )
         out.append(
-            f"Output          => {len(saved)} files in output/, {rows_text}, "
-            f"{len(meta['output_columns'])} columns"
+            f"Output          => {len(saved)} files in output/ as PHREEQC wrote them, "
+            f"{rows_text}, {len(meta['output_columns'] or [])} columns"
         )
 
     if meta.get("smoke_row"):
@@ -815,7 +816,6 @@ def run_batch(run_dir, cfg, settings, meta, rows, tasks, usable):
     n = len(tasks)
     by_id = {r["sim_id"]: r for r in rows}
     task_by_id = {t["sim_id"]: t for t in tasks}
-    drop = set(cfg["output"]["drop_columns"])
     log.info(
         "Running %d simulations on %d workers (timeout: %s s).",
         n,
@@ -831,9 +831,9 @@ def run_batch(run_dir, cfg, settings, meta, rows, tasks, usable):
         for res in pool.imap_unordered(work, tasks):
             save_result(run_dir, task_by_id[res["sim_id"]], res, cfg, usable)
             if res["headers"] and meta["output_columns"] is None:
-                meta["output_columns"] = [h for h in res["headers"] if h not in drop]
+                meta["output_columns"] = res["headers"]
             meta["phreeqc_version"] = meta["phreeqc_version"] or res["phreeqc_version"]
-            res["data"] = None  # saved to output/; the report only needs the row count
+            res["raw"] = None  # saved to output/; the report only needs the row count
             records.append((by_id[res["sim_id"]], res))
 
             note = f" ({res['message']})" if res["message"] else ""
@@ -854,10 +854,12 @@ def run_batch(run_dir, cfg, settings, meta, rows, tasks, usable):
 
 
 def run_model(model_dir, cfg):
-    """Sample, run and save one model. Returns False if its smoke test fails."""
+    """Sample, run and save one model. Returns False if its smoke test failed
+    (the batch runs regardless), True otherwise."""
     run = cfg["run"]
     model_path = model_dir / f"{model_dir.name}.phr"
-    template = model_path.read_text(encoding=run["model_encoding"])
+    with open(model_path, encoding=run["model_encoding"], newline="") as f:
+        template = f.read()
     n = run["n_simulations"]
 
     seed = cfg["sampling"]["seed"]
@@ -901,32 +903,30 @@ def run_model(model_dir, cfg):
         "checks": cfg["checks"],
         "end_days": end_days(template),
         "plot": cfg["plot"],
-        "keep_initial_row": cfg["output"]["keep_initial_row"],
-        "total_pressure_column": cfg["output"]["total_pressure_column"],
-        "gas_moles_columns": cfg["output"]["gas_moles_columns"],
+        "selected_output": selected_output_name(template),
         "encoding": run["model_encoding"],
     }
     usable = (
         ("success", "flagged") if cfg["output"]["include_flagged"] else ("success",)
     )
 
+    smoke_ok = True
     tasks = write_inputs(run_dir, rows, cfg)
     log.info("Wrote %d input files to %s", n, run_dir / "input")
     write_report(run_dir, cfg, meta, [], n)
 
     if run["smoke_test"]:
         res = run_smoke_test(cfg, settings, meta)
-        if res["status"] != "success":
-            log.error("Smoke test %s: %s", res["status"], res["message"])
-            log.error("Skipping %s.", model_dir.name)
-            meta["finished"] = now().isoformat(timespec="seconds")
-            write_report(run_dir, cfg, meta, [], n)
-            return False
-        log.info(
-            "Smoke test passed in %.1f s. Rough batch estimate: %.1f min.",
-            res["runtime_s"],
-            res["runtime_s"] * n / run["workers"] / 60,
-        )
+        smoke_ok = res["status"] == "success"
+        if smoke_ok:
+            log.info(
+                "Smoke test passed in %.1f s. Rough batch estimate: %.1f min.",
+                res["runtime_s"],
+                res["runtime_s"] * n / run["workers"] / 60,
+            )
+        else:
+            log.warning("Smoke test %s: %s", res["status"], res["message"])
+            log.warning("Running the batch anyway.")
 
     t0 = time.perf_counter()
     records = run_batch(run_dir, cfg, settings, meta, rows, tasks, usable)
@@ -942,7 +942,7 @@ def run_model(model_dir, cfg):
         n,
     )
     log.info("Report: %s", run_dir / "report.txt")
-    return True
+    return smoke_ok
 
 
 def main():
@@ -957,7 +957,9 @@ def main():
 
     setup_logging(None)
     for name, ok in results.items():
-        status = {True: "done", False: "smoke test failed", None: "disabled"}[ok]
+        status = {True: "done", False: "done (smoke test failed)", None: "disabled"}[
+            ok
+        ]
         log.info("%-30s %s", name, status)
 
 
