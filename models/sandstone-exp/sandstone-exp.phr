@@ -703,6 +703,7 @@ METH_H2
 Quartz
 -start
   1 A0 = PARM(1)
+  2 V = PARM(2)
  # 5 moles = 0
  #10 IF (M <= 0 OR M0 <= 0) THEN GOTO 200
  20 k25 = 10^-13.7
@@ -711,7 +712,7 @@ Quartz
  50 kT  = k25*EXP((Ea/Rg)*(1/298.15 - 1/TK))
  60 affinity = 1 - SR("Quartz")
  70 IF (affinity < 0) THEN affinity = 0
- 80 area = A0*(M/M0)^(2/3)
+ 80 area = A0/V*(M/M0)^(2/3)
  90 rate = area*kT*affinity
 100 moles = rate*TIME
 110 IF (moles > M) THEN moles = M
@@ -721,6 +722,7 @@ Quartz
 Calcite
 -start
   1 A0 = PARM(1)
+  2 V = PARM(2)
  # 5 moles = 0
  #10 IF (M <= 0 OR M0 <= 0) THEN GOTO 200
  20 k25 = 1e-6
@@ -729,7 +731,7 @@ Calcite
  50 kT  = k25*EXP((Ea/Rg)*(1/298.15 - 1/TK))
  60 affinity = 1 - SR("Calcite")
  70 IF (affinity < 0) THEN affinity = 0
- 80 area = A0*(M/M0)^(2/3)
+ 80 area = A0/V*(M/M0)^(2/3)
  90 rate = area*kT*affinity
 100 moles = rate*TIME
 110 IF (moles > M) THEN moles = M
@@ -739,6 +741,7 @@ Calcite
 Albite
 -start
   1 A0 = PARM(1)
+  2 V = PARM(2)
 #  5 moles = 0
 # 10 IF (M <= 0 OR M0 <= 0) THEN GOTO 200
  20 k25 = 10^-12
@@ -747,7 +750,7 @@ Albite
  50 kT  = k25*EXP((Ea/Rg)*(1/298.15 - 1/TK))
  60 affinity = 1 - SR("Albite")
  70 IF (affinity < 0) THEN affinity = 0
- 80 area = A0*(M/M0)^(2/3)
+ 80 area = A0/V*(M/M0)^(2/3)
  90 rate = area*kT*affinity
 100 moles = rate*TIME
 110 IF (moles > M) THEN moles = M
@@ -757,6 +760,7 @@ Albite
 K-feldspar
 -start
   1 A0 = PARM(1)
+  2 V = PARM(2)
  # 5 moles = 0
  #10 IF (M <= 0 OR M0 <= 0) THEN GOTO 200
  20 k25 = 10^-12
@@ -765,7 +769,7 @@ K-feldspar
  50 kT  = k25*EXP((Ea/Rg)*(1/298.15 - 1/TK))
  60 affinity = 1 - SR("K-feldspar")
  70 IF (affinity < 0) THEN affinity = 0
- 80 area = A0*(M/M0)^(2/3)
+ 80 area = A0/V*(M/M0)^(2/3)
  90 rate = area*kT*affinity
 100 moles = rate*TIME
 110 IF (moles > M) THEN moles = M
@@ -776,6 +780,7 @@ K-feldspar
 Chlorite(14A)
 -start
   1 A0 = PARM(1)
+  2 V = PARM(2)
  # 5 moles = 0
  #10 IF (M <= 0 OR M0 <= 0) THEN GOTO 200
  20 k25 = 10^-12
@@ -784,7 +789,7 @@ Chlorite(14A)
  50 kT  = k25*EXP((Ea/Rg)*(1/298.15 - 1/TK))
  60 affinity = 1 - SR("Chlorite(14A)")
  70 IF (affinity < 0) THEN affinity = 0
- 80 area = A0*(M/M0)^(2/3)
+ 80 area = A0/V*(M/M0)^(2/3)
  90 rate = area*kT*affinity
 100 moles = rate*TIME
 110 IF (moles > M) THEN moles = M
@@ -794,6 +799,7 @@ Chlorite(14A)
 Montmor-Na
 -start
   1 A0 = PARM(1)
+  2 V = PARM(2)
  # 5 moles = 0
  #10 IF (M <= 0 OR M0 <= 0) THEN GOTO 200
  20 k25 = 10^-14
@@ -802,7 +808,7 @@ Montmor-Na
  50 kT  = k25*EXP((Ea/Rg)*(1/298.15 - 1/TK))
  60 affinity = 1 - SR("Montmor-Na")
  70 IF (affinity < 0) THEN affinity = 0
- 80 area = A0*(M/M0)^(2/3)
+ 80 area = A0/V*(M/M0)^(2/3)
  90 rate = area*kT*affinity
 100 moles = rate*TIME
 110 IF (moles > M) THEN moles = M

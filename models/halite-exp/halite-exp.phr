@@ -629,7 +629,7 @@ Halite
  40 E = 7e3   # activation energy of that mineral J/mol
  50 R = 8.3145   # Universal gas constant J/mol/K/
  60 k2 = k1*exp(E/R*(1/TK - 1/298.15)) # reaction rate constant based on the temperature modification
- 70 rate = (A0)*(m/m0)^(2/3)*k2*(1 - SR("Halite"))  # rate calculation (Lasaga 1984)
+ 70 rate = (A0/V)*(m/m0)^(2/3)*k2*(1 - SR("Halite"))  # rate calculation (Lasaga 1984)
  80 moles = rate*time
  90 if (moles < 0) then goto 200
 200 SAVE moles
@@ -643,7 +643,7 @@ Anhydrite
  20 Ea  = 14e3             # J/mol, apparent activation energy
  30 Rg  = 8.3145
  40 kT  = k25*EXP(Ea/Rg*(1/TK - 1/298.15))
- 50 rate = (A0)*(m/m0)^(2/3)*kT*(1 - SR("Anhydrite"))
+ 50 rate = (A0/V)*(m/m0)^(2/3)*kT*(1 - SR("Anhydrite"))
  60 moles = rate*TIME
  70 SAVE moles
 -end
@@ -659,7 +659,7 @@ Calcite
  40 Ea = 23.5e3
  50 R = 8.3145
 60 k2 = k1*EXP((-Ea/R)*(1/TK - 1/298.15))
- 70 rate = (A0)*(m/m0)^(2/3)*k2*(1 - SR("Calcite"))
+ 70 rate = (A0/V)*(m/m0)^(2/3)*k2*(1 - SR("Calcite"))
  80 moles = rate*time
  90 if (moles < 0) THEN moles = 0
 200 SAVE moles

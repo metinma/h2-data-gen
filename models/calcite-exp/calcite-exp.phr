@@ -658,7 +658,7 @@ Calcite
  40 Ea = 23.5e3
  50 R = 8.3145
 60 k2 = k1*EXP((-Ea/R)*(1/TK - 1/298.15))
- 70 rate = (A0)*(m/m0)^(2/3)*k2*(1 - SR("Calcite"))
+ 70 rate = (A0/V)*(m/m0)^(2/3)*k2*(1 - SR("Calcite"))
  80 moles = rate*time
  90 if (moles < 0) THEN moles = 0
 200 SAVE moles
@@ -671,7 +671,7 @@ Illite
  40 E = 22e3
  50 R = 8.3145
  60 k2 = k1*exp(E/R*(1/TK - 1/298.15))
- 70 rate = (A0)*(m/m0)^(2/3)*k2*(1 - SR("Illite"))
+ 70 rate = (A0/V)*(m/m0)^(2/3)*k2*(1 - SR("Illite"))
  80 moles = rate*time
 200 SAVE moles
 -end
