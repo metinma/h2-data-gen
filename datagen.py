@@ -110,6 +110,8 @@ def load_config(path):
             "drop_columns": items(out["drop_columns"]),
             "include_flagged": out.getboolean("include_flagged"),
             "keep_initial_row": out.getboolean("keep_initial_row"),
+            "total_pressure_column": out.get("total_pressure_column", ""),
+            "gas_moles_columns": items(out.get("gas_moles_columns", "")),
         },
         "plot": [
             {
@@ -380,6 +382,24 @@ def quality_issues(col, data):
     return issues
 
 
+ATM_TO_BAR = 1.01325
+
+
+def add_partial_pressures(headers, data):
+    """Append <gas>_bar columns: each gas's share of the moles times the total
+    pressure, in bar. <gas> is the moles column's name up to its first "_"."""
+    gas_cols = _W["gas_moles_columns"]
+    if not gas_cols:
+        return headers, data
+    col = {h: i for i, h in enumerate(headers)}
+    moles = data[:, [col[c] for c in gas_cols]]
+    total = moles.sum(axis=1, keepdims=True)
+    total[total <= 0] = np.inf
+    p_bar = moles / total * data[:, [col[_W["total_pressure_column"]]]] * ATM_TO_BAR
+    names = [c.split("_", 1)[0] + "_bar" for c in gas_cols]
+    return headers + names, np.hstack([data, p_bar])
+
+
 def work(task):
     """Run one simulation. Returns a result dict; errors become a failed status."""
     sim_id, tag = task["sim_id"], task["tag"]
@@ -399,6 +419,7 @@ def work(task):
         lines = sel.splitlines()
         headers = lines[0].split()
         data = np.array([[float(x) for x in ln.split()] for ln in lines[1:]])
+        headers, data = add_partial_pressures(headers, data)
         col = {h: i for i, h in enumerate(headers)}
         chk = _W["checks"]
 
@@ -881,6 +902,8 @@ def run_model(model_dir, cfg):
         "end_days": end_days(template),
         "plot": cfg["plot"],
         "keep_initial_row": cfg["output"]["keep_initial_row"],
+        "total_pressure_column": cfg["output"]["total_pressure_column"],
+        "gas_moles_columns": cfg["output"]["gas_moles_columns"],
         "encoding": run["model_encoding"],
     }
     usable = (

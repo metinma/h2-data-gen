@@ -86,8 +86,8 @@ models/<name>/runs/<timestamp>/
 - **Input files** have one `{PLACEHOLDER} value` line per entry of
   `input_file` in `[output]`. The values are the exact text PHREEQC was given.
 - **Output files** are tab-separated, with a header line and one row per
-  kinetic step. The columns are the template's `USER_PUNCH -headings`, minus
-  any in `drop_columns`.
+  kinetic step. The columns are the template's `USER_PUNCH -headings`, plus
+  any `<gas>_bar` columns (see `gas_moles_columns`), minus any in `drop_columns`.
 - **`logs/`** (debug only) holds the filled-in PHREEQC input (`.pqi`) and
   PHREEQC's output (`.pqo`) of every simulation, plus a traceback when the
   script itself fails on a run.
@@ -254,6 +254,7 @@ Checks on each completed run. A run that fails one is `flagged`.
 | `drop_columns` | Output columns left out of the output files. |
 | `include_flagged` | `true` saves flagged runs in `input/` and `output/` instead of `failed/`. |
 | `keep_initial_row` | `true` also keeps PHREEQC's t = 0 row. That row is the initial-solution calculation, done before the gas phase and kinetics exist, so it is dropped by default. |
+| `total_pressure_column`, `gas_moles_columns` | Optional. Adds one `<gas>_bar` column per gas moles column (named up to its first `_`, e.g. `H2_g_mol` → `H2_bar`): the gas's share of the listed moles times the total pressure column (atm), in bar. Leave out or empty to add nothing. |
 
 ### `[plot.<title>]`
 
