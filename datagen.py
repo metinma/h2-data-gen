@@ -115,7 +115,6 @@ def load_config(path):
                 "columns": items(cp[name]["columns"]),
                 "scale": cp[name].getfloat("scale"),
                 "multiply_by": cp[name].get("multiply_by", ""),
-                "labels": items(cp[name].get("labels", "")),
                 "ylabel": cp[name]["ylabel"],
             }
             for name in cp.sections()
@@ -306,8 +305,7 @@ def run_phreeqc(text, tag):
     logs = Path(_W["run_dir"]) / "logs"
     with tempfile.TemporaryDirectory() as tmp:
         pqi, pqo = os.path.join(tmp, "model.pqi"), os.path.join(tmp, "model.pqo")
-        with open(pqi, "w", encoding=_W["encoding"], newline="") as f:
-            f.write(text)
+        Path(pqi).write_text(text, encoding=_W["encoding"])
         if _W["debug"]:
             shutil.copyfile(pqi, logs / f"{tag}_input.pqi")
 
@@ -323,11 +321,9 @@ def run_phreeqc(text, tag):
         except subprocess.TimeoutExpired:
             raise SimulationError(f"timeout after {_W['timeout']} s")
 
-        out = Path(pqo).read_text(encoding=_W["encoding"], errors="replace")
+        out = Path(pqo).read_text(encoding=_W["encoding"])
         if _W["debug"]:
             shutil.copyfile(pqo, logs / f"{tag}_output.pqo")
-            if res.stderr.strip():
-                (logs / f"{tag}_stderr.txt").write_text(res.stderr, encoding="utf-8")
 
         errors = [
             ln.strip()
@@ -342,40 +338,15 @@ def run_phreeqc(text, tag):
             r"\*\s*(PHREEQC[\w.\-]*)\s*\*", res.stdout + res.stderr + out
         )
         return (
-            Path(tmp, _W["selected_output"]).read_bytes(),
+            Path(tmp, "selected_output_1.sel").read_bytes(),
             version.group(1) if version else None,
         )
 
 
-def selected_output_name(template):
-    """File PHREEQC writes the selected output to: the SELECTED_OUTPUT block's
-    -file, or PHREEQC's default name when the template sets none."""
-    block = re.search(
-        r"^\s*SELECTED_OUTPUT\b(.*?)(?=^\s*[A-Z_]{4,}\b)", template, re.M | re.S
-    )
-    name = block and re.search(r"^\s*-file\s+(\S+)", block.group(1), re.M)
-    return name.group(1) if name else "selected_output_1.sel"
-
-
 def parse_selected_output(raw):
-    """Header names and a float array (NaN for text cells) from PHREEQC's
-    tab-separated selected output. A value without a heading gets the name
-    unnamed_<column number>."""
-    lines = [ln for ln in raw.decode(_W["encoding"], "replace").splitlines() if ln.strip()]
-    split = [[c.strip() for c in ln.rstrip("\t ").split("\t")] for ln in lines]
-    width = max(len(r) for r in split)
-    headers = split[0] + [f"unnamed_{i + 1}" for i in range(len(split[0]), width)]
-
-    def num(c):
-        try:
-            return float(c)
-        except ValueError:
-            return np.nan
-
-    data = np.full((len(split) - 1, width), np.nan)
-    for i, row in enumerate(split[1:]):
-        data[i, : len(row)] = [num(c) for c in row]
-    return headers, data
+    """Header names and data array from PHREEQC's selected output."""
+    lines = raw.decode(_W["encoding"]).splitlines()
+    return lines[0].split(), np.array([[float(x) for x in ln.split()] for ln in lines[1:]])
 
 
 def first_step(time_column):
@@ -477,9 +448,8 @@ def plot_run(sim_id, col, data, path):
     fig.suptitle(f"Simulation {sim_id}", fontsize=14, fontweight="bold")
     for ax, panel in zip(axes.flat, panels):
         factor = data[:, col[panel["multiply_by"]]] if panel["multiply_by"] else 1
-        labels = panel["labels"] or panel["columns"]
-        for c, label in zip(panel["columns"], labels):
-            ax.plot(t, data[:, col[c]] * factor * panel["scale"], label=label)
+        for c in panel["columns"]:
+            ax.plot(t, data[:, col[c]] * factor * panel["scale"], label=c)
         ax.set_title(panel["title"])
         ax.set_xlabel("Time (days)")
         ax.set_ylabel(panel["ylabel"])
@@ -858,8 +828,7 @@ def run_model(model_dir, cfg):
     (the batch runs regardless), True otherwise."""
     run = cfg["run"]
     model_path = model_dir / f"{model_dir.name}.phr"
-    with open(model_path, encoding=run["model_encoding"], newline="") as f:
-        template = f.read()
+    template = model_path.read_text(encoding=run["model_encoding"])
     n = run["n_simulations"]
 
     seed = cfg["sampling"]["seed"]
@@ -903,7 +872,6 @@ def run_model(model_dir, cfg):
         "checks": cfg["checks"],
         "end_days": end_days(template),
         "plot": cfg["plot"],
-        "selected_output": selected_output_name(template),
         "encoding": run["model_encoding"],
     }
     usable = (

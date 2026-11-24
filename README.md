@@ -85,11 +85,8 @@ models/<name>/runs/<timestamp>/
 
 - **Input files** have one `{PLACEHOLDER} value` line per entry of
   `input_file` in `[output]`. The values are the exact text PHREEQC was given.
-- **Output files** are PHREEQC's selected output file, byte for byte as
-  PHREEQC wrote it: the file named by `-file` in the template's
-  `SELECTED_OUTPUT` block (`selected_output_1.sel` when there is none), with
-  every row and column PHREEQC gives, including the initial-solution row.
-  The script only reads it, for the checks and the plots.
+- **Output files** are PHREEQC's selected output, byte for byte as PHREEQC
+  wrote it.
 - **`logs/`** (debug only) holds the filled-in PHREEQC input (`.pqi`) and
   PHREEQC's output (`.pqo`) of every simulation, plus a traceback when the
   script itself fails on a run.
@@ -261,9 +258,8 @@ One section per panel of the debug figure, in order, two panels per row.
 
 | Key | Meaning |
 |---|---|
-| `columns` | Output columns to plot against time. A value PHREEQC printed without a heading is named `unnamed_<column number>`. |
-| `labels` | Optional legend names, one per column. Default: the column names. |
-| `multiply_by` | Optional column to multiply each value by, row by row, e.g. `Ptot_atm` to turn cmol/mol into a partial pressure. |
+| `columns` | Output columns to plot against time. |
+| `multiply_by` | Optional column to multiply the values by, e.g. `Ptot_atm`. |
 | `scale` | Factor on the values, e.g. `1000` for mol to mmol. |
 | `ylabel` | Y-axis label. |
 
@@ -276,6 +272,6 @@ One section per panel of the debug figure, in order, two panels per row.
 2. Copy the `config.cfg` of the most similar model and edit it: the
    parameters and their ranges, the minerals, `input_file`, and the checks
    and plots for the template's output columns.
-3. Set `model_encoding` to the template's encoding. The `-exp` templates
-   keep the base models' Windows-1254 (`cp1254`); the others are UTF-8.
+3. Set `model_encoding` to the template's encoding. The existing templates
+   are UTF-8.
 4. Try it with a small `n_simulations` and `debug = true` before a full run.
