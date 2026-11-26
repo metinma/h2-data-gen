@@ -97,7 +97,6 @@ def load_config(path):
             "input_file": items(out["input_file"]),
             "drop_columns": items(out["drop_columns"]),
             "include_flagged": out.getboolean("include_flagged"),
-            "keep_initial_row": out.getboolean("keep_initial_row"),
         },
         "plot": [
             {
@@ -430,7 +429,7 @@ def work(task):
         res["status"] = "flagged" if issues else "success"
         res["message"] = "; ".join(issues)
         res["headers"] = headers
-        res["data"] = data if _W["keep_initial_row"] else kinetic
+        res["data"] = data
 
         if _W["debug"]:
             plot_run(
@@ -742,7 +741,6 @@ def run_model(model_dir, cfg):
         "checks": cfg["checks"],
         "end_days": end_days(template),
         "plot": cfg["plot"],
-        "keep_initial_row": cfg["output"]["keep_initial_row"],
         "encoding": ENCODING,
     }
     usable = (

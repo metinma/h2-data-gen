@@ -85,9 +85,10 @@ models/<name>/runs/<timestamp>/
 
 - **Input files** have one `{PLACEHOLDER} value` line per entry of
   `input_file` in `[output]`. The values are the exact text PHREEQC was given.
-- **Output files** are tab-separated, with a header line and one row per
-  kinetic step. The columns are the template's `USER_PUNCH -headings`, minus
-  any in `drop_columns`.
+- **Output files** are tab-separated, with a header line, PHREEQC's t = 0
+  initial-solution row and one row per kinetic step. The columns are the
+  template's `USER_PUNCH -headings`, minus any in `drop_columns`. The plots
+  and the checks leave out the t = 0 row.
 - **`logs/`** (debug only) holds the filled-in PHREEQC input (`.pqi`) and
   PHREEQC's output (`.pqo`) of every simulation, plus a traceback when the
   script itself fails on a run.
@@ -237,7 +238,6 @@ Checks on each completed run. A run that fails one is `flagged`.
 | `input_file` | Placeholders written to each input file, in this order. Must cover every placeholder in the template. |
 | `drop_columns` | Output columns left out of the output files. |
 | `include_flagged` | `true` saves flagged runs in `input/` and `output/` instead of `failed/`. |
-| `keep_initial_row` | `true` also keeps PHREEQC's t = 0 row. That row is the initial-solution calculation, done before the gas phase and kinetics exist, so it is dropped by default. |
 
 ### `[plot.<title>]`
 
