@@ -56,6 +56,14 @@ def load_config(path):
 
     if model.get("cushion_gas") not in GASES:
         raise ValueError(f"{path}: cushion_gas must be one of {', '.join(GASES)}")
+    basis = model.get("mineral_fraction_basis", "volume")
+    if basis not in ("volume", "mass"):
+        raise ValueError(f"{path}: mineral_fraction_basis must be volume or mass")
+    if basis == "mass" and not model.getboolean("normalize_mineral_fractions"):
+        raise ValueError(
+            f"{path}: mineral_fraction_basis = mass needs "
+            "normalize_mineral_fractions = true"
+        )
     known = [*DISTRIBUTIONS, *COMPUTED]
     for name in cp.sections():
         if name.startswith("parameter.") and cp[name]["distribution"] not in known:
@@ -85,6 +93,7 @@ def load_config(path):
             "normalize_mineral_fractions": model.getboolean(
                 "normalize_mineral_fractions"
             ),
+            "mineral_fraction_basis": basis,
         },
         "parameters": {
             name.split(".", 1)[1]: numbers(cp[name])
@@ -231,7 +240,15 @@ def derive(s, cfg):
         - sum(s[f"p{gas}"] for gas in GASES if gas != cushion)
     )
 
+    # Mineral shares as volume fractions of the solid. With the mass basis
+    # the parameters are mass shares (e.g. percent), converted with the
+    # densities: volume share = (mass share / density), scaled to sum to 1.
     fractions = {mn["name"]: s[mn["fraction_parameter"]] for mn in cfg["minerals"]}
+    if m["mineral_fraction_basis"] == "mass":
+        total = sum(fractions.values())
+        d.update({f"{n}_mass_fraction": f / total for n, f in fractions.items()})
+        density = {mn["name"]: mn["density_kg_m3"] for mn in cfg["minerals"]}
+        fractions = {n: f / density[n] for n, f in fractions.items()}
     if m["normalize_mineral_fractions"]:
         total = sum(fractions.values())
         fractions = {name: f / total for name, f in fractions.items()}
@@ -547,7 +564,7 @@ def write_report(run_dir, cfg, meta, records, n_planned):
     params = cfg["parameters"]
     varied = [n for n, p in params.items() if p["distribution"] != "constant"]
     derived = meta["derived_keys"]
-    fractions = [k for k in derived if k.endswith("_volume_fraction")]
+    fractions = [k for k in derived if k.endswith(("_mass_fraction", "_volume_fraction"))]
     counts = {s: sum(res["status"] == s for _, res in records) for s in STATUSES}
     ok = [row for row, res in records if res["status"] == "success"]
     other = [row for row, res in records if res["status"] != "success"]
@@ -642,7 +659,8 @@ def write_report(run_dir, cfg, meta, records, n_planned):
     out += [
         "Computed from the parameters (see the config): volumes in L, gas",
         "pressure in atm, mineral moles and areas in m², and each mineral's",
-        "volume fraction of the solid after scaling to sum to 1.",
+        "volume fraction (and, with mineral_fraction_basis = mass, mass",
+        "fraction) of the solid after scaling to sum to 1.",
         "",
     ]
     out += _table(

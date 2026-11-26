@@ -709,7 +709,7 @@ Quartz
  20 k25 = 10^-13.7
  30 Ea  = 90e3
  40 Rg  = 8.3145
- 50 kT  = k25*EXP((Ea/Rg)*(1/298.15 - 1/TK))
+ 50 kT  = k25*EXP((Ea/Rg)*(1/TK - 1/298.15))
  60 affinity = 1 - SR("Quartz")
  70 IF (affinity < 0) THEN affinity = 0
  80 area = A0/V*(M/M0)^(2/3)
@@ -728,7 +728,7 @@ Calcite
  20 k25 = 1e-6
  30 Ea  = 23.5e3
  40 Rg  = 8.3145
- 50 kT  = k25*EXP((Ea/Rg)*(1/298.15 - 1/TK))
+ 50 kT  = k25*EXP((Ea/Rg)*(1/TK - 1/298.15))
  60 affinity = 1 - SR("Calcite")
  70 IF (affinity < 0) THEN affinity = 0
  80 area = A0/V*(M/M0)^(2/3)
@@ -747,7 +747,7 @@ Albite
  20 k25 = 10^-12
  30 Ea  = 69.8e3
  40 Rg  = 8.3145
- 50 kT  = k25*EXP((Ea/Rg)*(1/298.15 - 1/TK))
+ 50 kT  = k25*EXP((Ea/Rg)*(1/TK - 1/298.15))
  60 affinity = 1 - SR("Albite")
  70 IF (affinity < 0) THEN affinity = 0
  80 area = A0/V*(M/M0)^(2/3)
@@ -766,7 +766,7 @@ K-feldspar
  20 k25 = 10^-12
  30 Ea  = 38.0e3
  40 Rg  = 8.3145
- 50 kT  = k25*EXP((Ea/Rg)*(1/298.15 - 1/TK))
+ 50 kT  = k25*EXP((Ea/Rg)*(1/TK - 1/298.15))
  60 affinity = 1 - SR("K-feldspar")
  70 IF (affinity < 0) THEN affinity = 0
  80 area = A0/V*(M/M0)^(2/3)
@@ -786,7 +786,7 @@ Chlorite(14A)
  20 k25 = 10^-12
  30 Ea  = 88e3
  40 Rg  = 8.3145
- 50 kT  = k25*EXP((Ea/Rg)*(1/298.15 - 1/TK))
+ 50 kT  = k25*EXP((Ea/Rg)*(1/TK - 1/298.15))
  60 affinity = 1 - SR("Chlorite(14A)")
  70 IF (affinity < 0) THEN affinity = 0
  80 area = A0/V*(M/M0)^(2/3)
@@ -805,7 +805,7 @@ Montmor-Na
  20 k25 = 10^-14
  30 Ea  = 48e3
  40 Rg  = 8.3145
- 50 kT  = k25*EXP((Ea/Rg)*(1/298.15 - 1/TK))
+ 50 kT  = k25*EXP((Ea/Rg)*(1/TK - 1/298.15))
  60 affinity = 1 - SR("Montmor-Na")
  70 IF (affinity < 0) THEN affinity = 0
  80 area = A0/V*(M/M0)^(2/3)
