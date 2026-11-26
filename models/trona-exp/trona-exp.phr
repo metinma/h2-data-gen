@@ -250,11 +250,11 @@ REACTION_TEMPERATURE 1
 # RATES ( parameters updated to p_fit from MATLAB)
 # Time windows shifted:
 # t=0 in this file = real day 9
-# SR: 06 days  (ignored)
-# Aceto: 096 days
-# Formate:096 days
-# Meth: 2696 days
-# Water add event at t=8 days ignored (was 1717.1 days)
+# SR: 0–6 days  (ignored)
+# Aceto: 0–96 days
+# Formate:0–96 days
+# Meth: 26–96 days
+# Water add event at t=8 days ignored (was 17–17.1 days)
 #############################################
 RATES 1
 RATES 1
