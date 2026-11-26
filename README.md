@@ -59,11 +59,12 @@ are two kinds of model:
 For each enabled model, `datagen.py`:
 
 1. Reads `config.cfg` and the `.phr` template.
-2. Draws all `n_simulations` samples up front from one seed.
+2. Draws all `n_simulations` samples up front from one random seed, which
+   is written to `report.txt` so the run can be repeated.
 3. Creates `models/<name>/runs/<YYYYMMDD-HHMMSS>/` (Istanbul time) and copies the config and
    template into it, so the run records exactly what produced it.
 4. Writes one input file per sample to `input/`, before anything runs.
-5. Runs the smoke test, if `smoke_test = true` (see below).
+5. Runs the smoke test, if `debug = true` (see below).
 6. Runs the simulations in parallel on `workers` processes. For each one it
    fills the template's placeholders, runs PHREEQC, checks the result and
    saves it.
@@ -122,7 +123,7 @@ Every simulation ends in one of four states:
 
 ### Smoke test
 
-With `smoke_test = true`, the script first runs one simulation with every
+With `debug = true`, the script first runs one simulation with every
 sampled parameter at the median of its distribution. If that run isn't a
 `success`, the model is skipped: its run folder keeps the input files and a
 report saying why, and the script moves on to the next model. If it passes,
@@ -139,12 +140,10 @@ a value, put a space before the `#`.
 | Key | Meaning |
 |---|---|
 | `enabled` | `false` skips this model. |
-| `model_encoding` | Encoding of the `.phr` file, e.g. `utf-8`, `cp1252`. |
 | `n_simulations` | Number of samples to draw and run. |
-| `debug` | `true` also writes `run.log`, `logs/` and `plot/`. |
+| `debug` | `true` runs the smoke test and also writes `run.log`, `logs/` and `plot/`. `false` (production) does neither. |
 | `workers` | Number of PHREEQC runs in parallel. |
 | `timeout_s` | Time limit per simulation, in seconds. |
-| `smoke_test` | Run the median sample once before the batch. |
 
 ### `[phreeqc]`
 
@@ -153,11 +152,7 @@ a value, put a space before the `#`.
 | `executable` | PHREEQC program: a name on `PATH` or a full path. |
 | `database` | Full path to the database, normally `phreeqc.dat`. |
 
-### `[sampling]`
-
-| Key | Meaning |
-|---|---|
-| `seed` | `auto` or an integer. The seed used is written to `report.txt`, so `auto` runs can be repeated. |
+### Sampling
 
 Samples are drawn by Latin hypercube sampling: each parameter's range is cut
 into `n_simulations` slices of equal probability, and every slice is used
@@ -169,12 +164,12 @@ still used scipy.
 
 | Key | Meaning |
 |---|---|
-| `volume_m3` | Rock volume represented by one simulation. |
-| `total_pressure_atm` | Total gas pressure. Must match `-pressure` in the template. |
-| `h2_pressure_atm` | H2 partial pressure. Must match `Hdg(g)` in the template. |
 | `cushion_gas` | The cushion gas, which takes the rest of the total pressure: `CH4` or `N2` in the current models (`CO2` and `H2S` also work). |
-| `normalize_mineral_fractions` | `true` scales the mineral fractions of each sample to sum to 1. |
-| `mineral_fraction_basis` | `volume` (default): the fraction parameters are volume shares of the solid. `mass`: they are mass shares, e.g. the base model's mass percentages; they are converted to volume shares with each mineral's density. Needs `normalize_mineral_fractions = true`. |
+| `mineral_fraction_basis` | `volume` (default): the fraction parameters are volume shares of the solid. `mass`: they are mass shares, e.g. the base model's mass percentages; they are converted to volume shares with each mineral's density. Either way the shares of each sample are scaled to sum to 1. |
+
+The rest is fixed for every model: a 1 m³ REV, UTF-8 templates, and the
+total and H2 pressures read from the template's GAS_PHASE (the `-pressure`
+and `Hdg(g)` lines).
 
 ### `[parameter.<name>]`
 
@@ -225,13 +220,13 @@ These placeholders are filled from the parameters above, not from a
 
 | Placeholder | Value |
 |---|---|
-| `{WATER_VOLUME}` | `volume_m3 × porosity × 1000 × water_fraction` (L) |
-| `{GAS_VOLUME}` | `volume_m3 × porosity × 1000 − {WATER_VOLUME}` (L) |
-| `{CH4}` or `{N2}` (the cushion gas's placeholder) | `total_pressure_atm − h2_pressure_atm −` the other three gas pressures (atm) |
+| `{WATER_VOLUME}` | `1 m³ × porosity × 1000 × water_fraction` (L) |
+| `{GAS_VOLUME}` | `1 m³ × porosity × 1000 − {WATER_VOLUME}` (L) |
+| `{CH4}` or `{N2}` (the cushion gas's placeholder) | the template's `-pressure` − its `Hdg(g)` − the other three gas pressures (atm) |
 | mineral moles | `mass / molar_mass × reactive_fraction × moles_multiplier` |
 | mineral area | `6 / diameter × mass / density × reactive_fraction × area_multiplier` (m²) |
 
-Here `mass = density × volume_m3 × (1 − porosity) × fraction`, with
+Here `mass = density × 1 m³ × (1 − porosity) × fraction`, with
 `fraction` the mineral's volume fraction of the solid. With
 `mineral_fraction_basis = mass`, the volume fractions are first computed
 from the mass shares `w`: `(w / density)` of each mineral, scaled to sum to 1. All values are
@@ -278,6 +273,5 @@ One section per panel of the debug figure, in order, two panels per row.
 2. Copy the `config.cfg` of the most similar model and edit it: the
    parameters and their ranges, the minerals, `input_file`, and the checks
    and plots for the template's output columns.
-3. Set `model_encoding` to the template's encoding. The existing templates
-   are UTF-8.
+3. Save the template as UTF-8.
 4. Try it with a small `n_simulations` and `debug = true` before a full run.
