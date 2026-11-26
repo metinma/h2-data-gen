@@ -1,5 +1,4 @@
 import configparser
-import hashlib
 import logging
 import os
 import re
@@ -567,11 +566,7 @@ def write_report(run_dir, cfg, meta, records, n_planned):
 
     out = [SEP, "Run", SEP, ""]
     out += [
-        (
-            f"Model       => {meta['template_name']} "
-            f"(sha256 {meta['template_sha256'][:12]})"
-        ),
-        f"datagen.py  => {meta['code_version']}",
+        f"Model       => {meta['template_name']}",
         f"PHREEQC     => {meta.get('phreeqc_version') or '-'}",
         f"Database    => {cfg['phreeqc']['database']}",
         f"Seed        => {meta['seed']}",
@@ -614,31 +609,6 @@ def write_report(run_dir, cfg, meta, records, n_planned):
             ]
 
     (run_dir / "report.txt").write_text("\n".join(out) + "\n", encoding="utf-8")
-
-
-def code_version():
-    """sha256 of datagen.py, plus its git commit when this is a git checkout."""
-    path = Path(__file__).resolve()
-    text = f"sha256 {hashlib.sha256(path.read_bytes()).hexdigest()[:12]}"
-    try:
-        git = ["git", "-C", str(path.parent)]
-        commit = subprocess.run(
-            git + ["rev-parse", "--short", "HEAD"],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=10,
-        ).stdout.strip()
-        dirty = subprocess.run(
-            git + ["status", "--porcelain", "--", path.name],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=10,
-        ).stdout.strip()
-    except (OSError, subprocess.SubprocessError):
-        return text
-    return f"{text}, git {commit}" + (" with uncommitted changes" if dirty else "")
 
 
 MODELS_DIR = Path(__file__).resolve().parent / "models"
@@ -757,8 +727,6 @@ def run_model(model_dir, cfg):
         "started": stamp.isoformat(timespec="seconds"),
         "finished": None,
         "template_name": model_path.name,
-        "template_sha256": hashlib.sha256(model_path.read_bytes()).hexdigest(),
-        "code_version": code_version(),
         "phreeqc_version": None,
         "derived_keys": [
             k for k in rows[0] if k != "sim_id" and k not in cfg["parameters"]

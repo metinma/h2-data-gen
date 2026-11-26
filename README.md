@@ -94,8 +94,8 @@ models/<name>/runs/<timestamp>/
 - **`plot/`** (debug only) holds one figure per simulation, laid out by the
   `[plot.*]` sections.
 - **`report.txt`** has these sections:
-  - *Run*: template and `datagen.py` hashes (and git commit), PHREEQC
-    version, database, seed, start and finish time, and counts by status.
+  - *Run*: template, PHREEQC version, database, seed, start and finish
+    time, and counts by status.
   - *Sampled Parameters*: each parameter's distribution and bounds, and its
     min / median / max over the successful runs.
   - *Derived Values*: min / median / max of the derived values over the
