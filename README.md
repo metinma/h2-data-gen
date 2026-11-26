@@ -23,8 +23,8 @@ python datagen.py
 ```
 
 This runs every model in `models/` whose config has `enabled = true`, one
-model after another. At the end it prints one line per model: `done`,
-`smoke test failed` or `disabled`.
+model after another. At the end it prints one line per model: `done` or
+`disabled`.
 
 To run only some models, set `enabled = false` in the others.
 
@@ -64,11 +64,10 @@ For each enabled model, `datagen.py`:
 3. Creates `models/<name>/runs/<YYYYMMDD-HHMMSS>/` (Istanbul time) and copies the config and
    template into it, so the run records exactly what produced it.
 4. Writes one input file per sample to `input/`, before anything runs.
-5. Runs the smoke test, if `debug = true` (see below).
-6. Runs the simulations in parallel on `workers` processes. For each one it
+5. Runs the simulations in parallel on `workers` processes. For each one it
    fills the template's placeholders, runs PHREEQC, checks the result and
    saves it.
-7. Writes `report.txt`, before the batch, at least once a minute during it
+6. Writes `report.txt`, before the batch, at least once a minute during it
    and at the end.
 
 ### Run folder
@@ -98,7 +97,6 @@ models/<name>/runs/<timestamp>/
   - *General Information*: template and `datagen.py` hashes (and git commit),
     PHREEQC version, start and finish time, settings, counts by status,
     runtimes and a summary of the output files.
-  - *Smoke Test*: the parameter and derived values of the median sample.
   - *Sampled Parameters* and *Derived Values*: bounds, and min / median / max
     over the successful runs and over all other runs.
   - *Flagged and Failed Runs*: grouped by reason, with a count and the run
@@ -121,14 +119,6 @@ Every simulation ends in one of four states:
 
 `report.txt` groups the runs that aren't `success` by reason.
 
-### Smoke test
-
-With `debug = true`, the script first runs one simulation with every
-sampled parameter at the median of its distribution. If that run isn't a
-`success`, the model is skipped: its run folder keeps the input files and a
-report saying why, and the script moves on to the next model. If it passes,
-the log shows its runtime and a rough estimate for the whole batch.
-
 ## The config file
 
 Each model has a `config.cfg` in INI format. Lists are comma-separated and
@@ -141,7 +131,7 @@ a value, put a space before the `#`.
 |---|---|
 | `enabled` | `false` skips this model. |
 | `n_simulations` | Number of samples to draw and run. |
-| `debug` | `true` runs the smoke test and also writes `run.log`, `logs/` and `plot/`. `false` (production) does neither. |
+| `debug` | `true` also writes `run.log`, `logs/` and `plot/`. |
 | `workers` | Number of PHREEQC runs in parallel. |
 | `timeout_s` | Time limit per simulation, in seconds. |
 
