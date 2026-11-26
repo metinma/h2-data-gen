@@ -77,7 +77,7 @@ models/<name>/runs/<timestamp>/
     input/00001_input.txt     the placeholder values of each sample
     output/00001_output.txt   PHREEQC's selected output of each usable run
     failed/00001_input.txt    input files of failed, timed-out and flagged runs
-    report.txt                the run's settings, results and every sample (see below)
+    report.txt                what produced the run, working ranges and failures (see below)
     config.cfg                copy of the config used
     <name>.phr                copy of the template used
     run.log, logs/, plot/     only with debug = true
@@ -94,17 +94,14 @@ models/<name>/runs/<timestamp>/
 - **`plot/`** (debug only) holds one figure per simulation, laid out by the
   `[plot.*]` sections.
 - **`report.txt`** has these sections:
-  - *General Information*: template and `datagen.py` hashes (and git commit),
-    PHREEQC version, start and finish time, settings, counts by status,
-    runtimes and a summary of the output files.
-  - *Sampled Parameters* and *Derived Values*: bounds, and min / median / max
-    over the successful runs and over all other runs.
+  - *Run*: template, PHREEQC version, database, seed, start and finish
+    time, and counts by status.
+  - *Sampled Parameters*: each parameter's distribution and bounds, and its
+    min / median / max over the successful runs.
+  - *Derived Values*: min / median / max of the derived values over the
+    successful runs.
   - *Flagged and Failed Runs*: grouped by reason, with a count and the run
     numbers.
-  - *Simulations*: one line per run with its status, runtime, varied
-    parameters and the mineral mass and volume fractions after scaling. These are the
-    values not in the input files.
-  - *Output Columns*: the columns of the output files.
 
 ### Result status
 

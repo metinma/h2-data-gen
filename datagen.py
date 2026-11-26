@@ -1,5 +1,4 @@
 import configparser
-import hashlib
 import logging
 import os
 import re
@@ -499,7 +498,6 @@ def save_result(run_dir, task, res, cfg, usable):
             res["data"],
             set(cfg["output"]["drop_columns"]),
         )
-        res["n_rows"] = len(res["data"])
     else:
         shutil.move(
             run_dir / "input" / f"{tag}_input.txt",
@@ -557,116 +555,43 @@ def _section(title):
 
 
 def write_report(run_dir, cfg, meta, records, n_planned):
-    """Write report.txt: settings, results, value ranges, failures and every run.
+    """Write report.txt: what produced the run, the working ranges, failures.
 
     Called before the batch, during it and at the end, so the report is
     always current, even if the batch is stopped.
     """
     params = cfg["parameters"]
-    varied = [n for n, p in params.items() if p["distribution"] != "constant"]
-    derived = meta["derived_keys"]
-    fractions = [
-        k for k in derived if k.endswith(("_mass_fraction", "_volume_fraction"))
-    ]
     counts = {s: sum(res["status"] == s for _, res in records) for s in STATUSES}
     ok = [row for row, res in records if res["status"] == "success"]
-    other = [row for row, res in records if res["status"] != "success"]
-    m = cfg["model"]
 
-    out = [SEP, "General Information", SEP, ""]
+    out = [SEP, "Run", SEP, ""]
     out += [
-        f"Run folder      => {run_dir}",
-        f"Model           => {meta['template_name']} (sha256 {meta['template_sha256'][:12]})",
-        f"datagen.py      => {meta['code_version']}",
-        f"PHREEQC         => {cfg['phreeqc']['executable']} ({meta.get('phreeqc_version') or 'version not known yet'})",
-        f"Database        => {cfg['phreeqc']['database']}",
-        f"Started         => {meta['started']}",
-        f"Finished        => {meta['finished'] or 'still running'}",
-        f"Mode            => {'debug' if cfg['run']['debug'] else 'production'}",
-        f"Sampling        => Latin hypercube, seed {meta['seed']}",
-        f"Workers         => {cfg['run']['workers']}",
-        f"Timeout         => {cfg['run']['timeout_s']} s",
-        (
-            f"Gas             => {m['total_pressure_atm']} atm total, "
-            f"H2 {m['h2_pressure_atm']} atm, cushion gas {m['cushion_gas']}"
-        ),
-        f"Simulations     => {len(records)} of {n_planned} finished",
+        f"Model       => {meta['template_name']}",
+        f"PHREEQC     => {meta.get('phreeqc_version') or '-'}",
+        f"Database    => {cfg['phreeqc']['database']}",
+        f"Seed        => {meta['seed']}",
+        f"Started     => {meta['started']}",
+        f"Finished    => {meta['finished'] or '-'}",
+        f"Simulations => {len(records)} of {n_planned} finished: "
+        + ", ".join(f"{count} {status}" for status, count in counts.items()),
     ]
-    out += [f"  {status:<14}=> {count}" for status, count in counts.items()]
-    if records:
-        runtimes = [res["runtime_s"] for _, res in records]
-        out.append(
-            f"Runtime per sim => median {np.median(runtimes):.1f} s, "
-            f"max {max(runtimes):.1f} s, total {sum(runtimes) / 3600:.2f} CPU h"
-        )
-    saved = [res for _, res in records if res.get("n_rows")]
-    if saved:
-        n_rows = [res["n_rows"] for res in saved]
-        rows_text = (
-            f"{n_rows[0]} rows each"
-            if min(n_rows) == max(n_rows)
-            else f"{min(n_rows)} to {max(n_rows)} rows"
-        )
-        out.append(
-            f"Output          => {len(saved)} files in output/, {rows_text}, "
-            f"{len(meta['output_columns'])} columns"
-        )
 
-    out += _section("Sampled Parameters")
-    out += [
-        "Ranges over the runs, split into successful runs and all others",
-        "(flagged, failed, timeout). Constant parameters are listed once.",
-        "",
-    ]
+    stats_header = ["min", "median", "max"]
+    out += _section("Sampled Parameters (successful runs)")
     lines = []
     for name, p in params.items():
-        if p["distribution"] == "constant":
-            lines.append(
-                [name, "constant", "-", "-", _num(p["value"]), "", "", "", "", ""]
-            )
-            continue
         bounds = (
             [_num(p["low"]), _num(p["high"])]
-            if p["distribution"] not in COMPUTED
+            if p["distribution"] in DISTRIBUTIONS
             else ["-", "-"]
         )
-        lines.append(
-            [name, p["distribution"], *bounds, *_stats(ok, name), *_stats(other, name)]
-        )
-    out += _table(
-        [
-            "parameter",
-            "distribution",
-            "low",
-            "high",
-            "ok min",
-            "ok median",
-            "ok max",
-            "other min",
-            "other median",
-            "other max",
-        ],
-        lines,
-    )
+        lines.append([name, p["distribution"], *bounds, *_stats(ok, name)])
+    out += _table(["parameter", "distribution", "low", "high", *stats_header], lines)
 
-    out += _section("Derived Values")
-    out += [
-        "Computed from the parameters (see the config): volumes in L, gas",
-        "pressure in atm, mineral moles and areas in m², and each mineral's",
-        "mass and volume fractions of the solid after scaling to sum to 1.",
-        "",
-    ]
+    out += _section("Derived Values (successful runs)")
     out += _table(
-        [
-            "quantity",
-            "ok min",
-            "ok median",
-            "ok max",
-            "other min",
-            "other median",
-            "other max",
-        ],
-        [[k, *_stats(ok, k), *_stats(other, k)] for k in derived],
+        ["quantity", *stats_header],
+        [[k, *_stats(ok, k)] for k in meta["derived_keys"]],
     )
 
     problems = [(row, res) for row, res in records if res["status"] != "success"]
@@ -683,59 +608,7 @@ def write_report(run_dir, cfg, meta, records, n_planned):
                 "",
             ]
 
-    if records:
-        out += _section("Simulations")
-        out += [
-            "One line per finished run: the varied parameters, with the mineral",
-            "fractions as used (after scaling to sum to 1). The values PHREEQC",
-            "was given are in input/ (or failed/) under the same number.",
-            "",
-        ]
-        drawn = {mn["fraction_parameter"] for mn in cfg["minerals"]}
-        cols = [n for n in varied if n not in drawn] + fractions
-        out += _table(
-            ["sim", "status", "runtime_s", *cols],
-            [
-                [
-                    row["sim_id"],
-                    res["status"],
-                    f"{res['runtime_s']:.1f}",
-                    *[_num(row[c]) for c in cols],
-                ]
-                for row, res in sorted(records, key=lambda r: r[0]["sim_id"])
-            ],
-        )
-
-    if meta.get("output_columns"):
-        out += _section("Output Columns")
-        out += [", ".join(meta["output_columns"])]
-
     (run_dir / "report.txt").write_text("\n".join(out) + "\n", encoding="utf-8")
-
-
-def code_version():
-    """sha256 of datagen.py, plus its git commit when this is a git checkout."""
-    path = Path(__file__).resolve()
-    text = f"sha256 {hashlib.sha256(path.read_bytes()).hexdigest()[:12]}"
-    try:
-        git = ["git", "-C", str(path.parent)]
-        commit = subprocess.run(
-            git + ["rev-parse", "--short", "HEAD"],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=10,
-        ).stdout.strip()
-        dirty = subprocess.run(
-            git + ["status", "--porcelain", "--", path.name],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=10,
-        ).stdout.strip()
-    except (OSError, subprocess.SubprocessError):
-        return text
-    return f"{text}, git {commit}" + (" with uncommitted changes" if dirty else "")
 
 
 MODELS_DIR = Path(__file__).resolve().parent / "models"
@@ -792,7 +665,6 @@ def run_batch(run_dir, cfg, settings, meta, rows, tasks, usable):
     n = len(tasks)
     by_id = {r["sim_id"]: r for r in rows}
     task_by_id = {t["sim_id"]: t for t in tasks}
-    drop = set(cfg["output"]["drop_columns"])
     log.info(
         "Running %d simulations on %d workers (timeout: %s s).",
         n,
@@ -807,8 +679,6 @@ def run_batch(run_dir, cfg, settings, meta, rows, tasks, usable):
     ) as pool:
         for res in pool.imap_unordered(work, tasks):
             save_result(run_dir, task_by_id[res["sim_id"]], res, cfg, usable)
-            if res["headers"] and meta["output_columns"] is None:
-                meta["output_columns"] = [h for h in res["headers"] if h not in drop]
             meta["phreeqc_version"] = meta["phreeqc_version"] or res["phreeqc_version"]
             res["data"] = None  # saved to output/; the report only needs the row count
             records.append((by_id[res["sim_id"]], res))
@@ -857,10 +727,7 @@ def run_model(model_dir, cfg):
         "started": stamp.isoformat(timespec="seconds"),
         "finished": None,
         "template_name": model_path.name,
-        "template_sha256": hashlib.sha256(model_path.read_bytes()).hexdigest(),
-        "code_version": code_version(),
         "phreeqc_version": None,
-        "output_columns": None,
         "derived_keys": [
             k for k in rows[0] if k != "sim_id" and k not in cfg["parameters"]
         ],
