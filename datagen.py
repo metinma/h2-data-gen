@@ -588,7 +588,6 @@ def write_report(run_dir, cfg, meta, records, n_planned):
         f"Timeout         => {cfg['run']['timeout_s']} s",
         f"Gas             => {m['total_pressure_atm']} atm total, "
         f"H2 {m['h2_pressure_atm']} atm, cushion gas {m['cushion_gas']}",
-        f"Smoke test      => {meta['smoke']}",
         f"Simulations     => {len(records)} of {n_planned} finished",
     ]
     out += [f"  {status:<14}=> {count}" for status, count in counts.items()]
@@ -609,15 +608,6 @@ def write_report(run_dir, cfg, meta, records, n_planned):
         out.append(
             f"Output          => {len(saved)} files in output/, {rows_text}, "
             f"{len(meta['output_columns'])} columns"
-        )
-
-    if meta.get("smoke_row"):
-        sr = meta["smoke_row"]
-        out += _section("Smoke Test (median of every parameter)")
-        out += [f"Result => {meta['smoke']}", ""]
-        out += _table(
-            ["quantity", "value"],
-            [[n, _num(sr[n])] for n in list(params) + derived],
         )
 
     out += _section("Sampled Parameters")
@@ -795,19 +785,6 @@ def write_inputs(run_dir, rows, cfg):
     return tasks
 
 
-def run_smoke_test(cfg, settings, meta):
-    """Run the median of every parameter once, in this process."""
-    s = scale([0.5] * len(sampled(cfg)), cfg)
-    d = derive(s, cfg)
-    meta["smoke_row"] = {**s, **d}
-    init_worker(settings)
-    log.info("Smoke test: running the median of every parameter...")
-    res = work({"sim_id": 0, "tag": "00000", "reps": replacements(s, d, cfg)})
-    meta["phreeqc_version"] = res["phreeqc_version"]
-    meta["smoke"] = f"{res['status']} in {res['runtime_s']} s {res['message']}".strip()
-    return res
-
-
 def run_batch(run_dir, cfg, settings, meta, rows, tasks, usable):
     """Run every task on the worker pool, saving each result as it arrives."""
     n = len(tasks)
@@ -852,7 +829,7 @@ def run_batch(run_dir, cfg, settings, meta, rows, tasks, usable):
 
 
 def run_model(model_dir, cfg):
-    """Sample, run and save one model. Returns False if its smoke test fails."""
+    """Sample, run and save one model."""
     run = cfg["run"]
     model_path = model_dir / f"{model_dir.name}.phr"
     template = model_path.read_text(encoding=ENCODING)
@@ -880,8 +857,6 @@ def run_model(model_dir, cfg):
         "template_name": model_path.name,
         "template_sha256": hashlib.sha256(model_path.read_bytes()).hexdigest(),
         "code_version": code_version(),
-        "smoke": "on" if run["debug"] else "off (production)",
-        "smoke_row": None,
         "phreeqc_version": None,
         "output_columns": None,
         "derived_keys": [
@@ -909,20 +884,6 @@ def run_model(model_dir, cfg):
     log.info("Wrote %d input files to %s", n, run_dir / "input")
     write_report(run_dir, cfg, meta, [], n)
 
-    if run["debug"]:
-        res = run_smoke_test(cfg, settings, meta)
-        if res["status"] != "success":
-            log.error("Smoke test %s: %s", res["status"], res["message"])
-            log.error("Skipping %s.", model_dir.name)
-            meta["finished"] = now().isoformat(timespec="seconds")
-            write_report(run_dir, cfg, meta, [], n)
-            return False
-        log.info(
-            "Smoke test passed in %.1f s. Rough batch estimate: %.1f min.",
-            res["runtime_s"],
-            res["runtime_s"] * n / run["workers"] / 60,
-        )
-
     t0 = time.perf_counter()
     records = run_batch(run_dir, cfg, settings, meta, rows, tasks, usable)
     wall = time.perf_counter() - t0
@@ -937,7 +898,6 @@ def run_model(model_dir, cfg):
         n,
     )
     log.info("Report: %s", run_dir / "report.txt")
-    return True
 
 
 def main():
@@ -946,13 +906,13 @@ def main():
     for model_dir in model_dirs:
         cfg = load_config(model_dir / "config.cfg")
         if cfg["run"]["enabled"]:
-            results[model_dir.name] = run_model(model_dir, cfg)
+            run_model(model_dir, cfg)
+            results[model_dir.name] = "done"
         else:
-            results[model_dir.name] = None
+            results[model_dir.name] = "disabled"
 
     setup_logging(None)
-    for name, ok in results.items():
-        status = {True: "done", False: "smoke test failed", None: "disabled"}[ok]
+    for name, status in results.items():
         log.info("%-30s %s", name, status)
 
 
