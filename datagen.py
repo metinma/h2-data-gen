@@ -39,8 +39,8 @@ def load_config(path):
     with open(path, encoding="utf-8") as f:
         cp.read_file(f)
 
-    run, ph, smp, model, chk, out = (
-        cp[s] for s in ("run", "phreeqc", "sampling", "model", "checks", "output")
+    run, ph, model, chk, out = (
+        cp[s] for s in ("run", "phreeqc", "model", "checks", "output")
     )
     text_keys = {
         "distribution",
@@ -56,14 +56,6 @@ def load_config(path):
 
     if model.get("cushion_gas") not in GASES:
         raise ValueError(f"{path}: cushion_gas must be one of {', '.join(GASES)}")
-    basis = model.get("mineral_fraction_basis", "volume")
-    if basis not in ("volume", "mass"):
-        raise ValueError(f"{path}: mineral_fraction_basis must be volume or mass")
-    if basis == "mass" and not model.getboolean("normalize_mineral_fractions"):
-        raise ValueError(
-            f"{path}: mineral_fraction_basis = mass needs "
-            "normalize_mineral_fractions = true"
-        )
     known = [*DISTRIBUTIONS, *COMPUTED]
     for name in cp.sections():
         if name.startswith("parameter.") and cp[name]["distribution"] not in known:
@@ -74,26 +66,14 @@ def load_config(path):
     return {
         "run": {
             "enabled": run.getboolean("enabled"),
-            "model_encoding": run["model_encoding"],
             "n_simulations": run.getint("n_simulations"),
             "debug": run.getboolean("debug"),
             "workers": run.getint("workers"),
             "timeout_s": run.getfloat("timeout_s"),
-            "smoke_test": run.getboolean("smoke_test"),
         },
         "phreeqc": {"executable": ph["executable"], "database": ph["database"]},
-        "sampling": {
-            "seed": smp["seed"] if smp["seed"] == "auto" else int(smp["seed"]),
-        },
         "model": {
-            "volume_m3": model.getfloat("volume_m3"),
-            "total_pressure_atm": model.getfloat("total_pressure_atm"),
-            "h2_pressure_atm": model.getfloat("h2_pressure_atm"),
             "cushion_gas": model["cushion_gas"],
-            "normalize_mineral_fractions": model.getboolean(
-                "normalize_mineral_fractions"
-            ),
-            "mineral_fraction_basis": basis,
         },
         "parameters": {
             name.split(".", 1)[1]: numbers(cp[name])
@@ -223,13 +203,39 @@ def scale(unit_row, cfg):
 
 GASES = ("CO2", "H2S", "N2", "CH4")
 
+# Every model is a 1 m³ REV of rock.
+VOLUME_M3 = 1.0
+
+# Templates and every file datagen.py writes are UTF-8.
+ENCODING = "utf-8"
+
+
+def gas_pressures(template):
+    """Total and H2 pressure (atm) from the template's GAS_PHASE.
+
+    Read from the "-pressure" and "Hdg(g)" lines, so the cushion gas always
+    takes exactly what the template leaves of the total.
+    """
+
+    def value(pattern, what):
+        found = re.search(pattern, template, re.MULTILINE)
+        if not found:
+            raise ValueError(f"template has no {what} line in GAS_PHASE")
+        return float(found.group(1))
+
+    number = r"([0-9.]+(?:[eE][+-]?[0-9]+)?)"
+    return {
+        "total_pressure_atm": value(rf"^\s*-pressure\s+{number}", '"-pressure"'),
+        "h2_pressure_atm": value(rf"^\s*Hdg\(g\)\s+{number}", '"Hdg(g)"'),
+    }
+
 
 def derive(s, cfg):
     """Quantities computed from the sampled parameters."""
     m = cfg["model"]
     d = {}
 
-    pore_volume = m["volume_m3"] * s["porosity"] * 1000.0
+    pore_volume = VOLUME_M3 * s["porosity"] * 1000.0
     d["water_volume_L"] = pore_volume * s["water_fraction"]
     d["gas_volume_L"] = pore_volume - d["water_volume_L"]
 
@@ -240,25 +246,23 @@ def derive(s, cfg):
         - sum(s[f"p{gas}"] for gas in GASES if gas != cushion)
     )
 
-    # Mineral shares as volume fractions of the solid. With the mass basis
-    # the parameters are mass shares (e.g. percent), converted with the
-    # densities: volume share = (mass share / density), scaled to sum to 1.
-    fractions = {mn["name"]: s[mn["fraction_parameter"]] for mn in cfg["minerals"]}
-    if m["mineral_fraction_basis"] == "mass":
-        total = sum(fractions.values())
-        d.update({f"{n}_mass_fraction": f / total for n, f in fractions.items()})
-        density = {mn["name"]: mn["density_kg_m3"] for mn in cfg["minerals"]}
-        fractions = {n: f / density[n] for n, f in fractions.items()}
-    if m["normalize_mineral_fractions"]:
-        total = sum(fractions.values())
-        fractions = {name: f / total for name, f in fractions.items()}
+    # The mineral parameters are mass shares of the solid (e.g. percent).
+    # Volume share = mass share / density, scaled to sum to 1.
+    shares = {mn["name"]: s[mn["fraction_parameter"]] for mn in cfg["minerals"]}
+    total = sum(shares.values())
+    d.update({f"{n}_mass_fraction": f / total for n, f in shares.items()})
+    volume = {
+        mn["name"]: shares[mn["name"]] / mn["density_kg_m3"] for mn in cfg["minerals"]
+    }
+    total = sum(volume.values())
+    fractions = {name: v / total for name, v in volume.items()}
 
     for mineral in cfg["minerals"]:
         name = mineral["name"]
         d[f"{name}_volume_fraction"] = fractions[name]
         mass = (
             mineral["density_kg_m3"]
-            * m["volume_m3"]
+            * VOLUME_M3
             * (1 - s["porosity"])
             * fractions[name]
         )
@@ -564,7 +568,9 @@ def write_report(run_dir, cfg, meta, records, n_planned):
     params = cfg["parameters"]
     varied = [n for n, p in params.items() if p["distribution"] != "constant"]
     derived = meta["derived_keys"]
-    fractions = [k for k in derived if k.endswith(("_mass_fraction", "_volume_fraction"))]
+    fractions = [
+        k for k in derived if k.endswith(("_mass_fraction", "_volume_fraction"))
+    ]
     counts = {s: sum(res["status"] == s for _, res in records) for s in STATUSES}
     ok = [row for row, res in records if res["status"] == "success"]
     other = [row for row, res in records if res["status"] != "success"]
@@ -581,11 +587,10 @@ def write_report(run_dir, cfg, meta, records, n_planned):
         f"Finished        => {meta['finished'] or 'still running'}",
         f"Mode            => {'debug' if cfg['run']['debug'] else 'production'}",
         f"Sampling        => Latin hypercube, seed {meta['seed']}",
-        f"Model encoding  => {cfg['run']['model_encoding']}",
         f"Workers         => {cfg['run']['workers']}",
         f"Timeout         => {cfg['run']['timeout_s']} s",
-        f"Gas             => {m['total_pressure_atm']} atm total, H2 {m['h2_pressure_atm']} atm, ",
-        f"cushion gas {m['cushion_gas']}",
+        f"Gas             => {m['total_pressure_atm']} atm total, "
+        f"H2 {m['h2_pressure_atm']} atm, cushion gas {m['cushion_gas']}",
         f"Smoke test      => {meta['smoke']}",
         f"Simulations     => {len(records)} of {n_planned} finished",
     ]
@@ -659,8 +664,7 @@ def write_report(run_dir, cfg, meta, records, n_planned):
     out += [
         "Computed from the parameters (see the config): volumes in L, gas",
         "pressure in atm, mineral moles and areas in m², and each mineral's",
-        "volume fraction (and, with mineral_fraction_basis = mass, mass",
-        "fraction) of the solid after scaling to sum to 1.",
+        "mass and volume fractions of the solid after scaling to sum to 1.",
         "",
     ]
     out += _table(
@@ -854,12 +858,11 @@ def run_model(model_dir, cfg):
     """Sample, run and save one model. Returns False if its smoke test fails."""
     run = cfg["run"]
     model_path = model_dir / f"{model_dir.name}.phr"
-    template = model_path.read_text(encoding=run["model_encoding"])
+    template = model_path.read_text(encoding=ENCODING)
+    cfg["model"].update(gas_pressures(template))
     n = run["n_simulations"]
 
-    seed = cfg["sampling"]["seed"]
-    if seed == "auto":
-        seed = int(np.random.SeedSequence().entropy % 2**32)
+    seed = int(np.random.SeedSequence().entropy % 2**32)
     rows = draw_samples(cfg, seed)
 
     stamp = now()
@@ -880,7 +883,7 @@ def run_model(model_dir, cfg):
         "template_name": model_path.name,
         "template_sha256": hashlib.sha256(model_path.read_bytes()).hexdigest(),
         "code_version": code_version(),
-        "smoke": "on" if run["smoke_test"] else "off",
+        "smoke": "on" if run["debug"] else "off (production)",
         "smoke_row": None,
         "phreeqc_version": None,
         "output_columns": None,
@@ -899,7 +902,7 @@ def run_model(model_dir, cfg):
         "end_days": end_days(template),
         "plot": cfg["plot"],
         "keep_initial_row": cfg["output"]["keep_initial_row"],
-        "encoding": run["model_encoding"],
+        "encoding": ENCODING,
     }
     usable = (
         ("success", "flagged") if cfg["output"]["include_flagged"] else ("success",)
@@ -909,7 +912,7 @@ def run_model(model_dir, cfg):
     log.info("Wrote %d input files to %s", n, run_dir / "input")
     write_report(run_dir, cfg, meta, [], n)
 
-    if run["smoke_test"]:
+    if run["debug"]:
         res = run_smoke_test(cfg, settings, meta)
         if res["status"] != "success":
             log.error("Smoke test %s: %s", res["status"], res["message"])
