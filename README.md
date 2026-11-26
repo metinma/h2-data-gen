@@ -174,6 +174,7 @@ still used scipy.
 | `h2_pressure_atm` | H2 partial pressure. Must match `Hdg(g)` in the template. |
 | `cushion_gas` | The cushion gas, which takes the rest of the total pressure: `CH4` or `N2` in the current models (`CO2` and `H2S` also work). |
 | `normalize_mineral_fractions` | `true` scales the mineral fractions of each sample to sum to 1. |
+| `mineral_fraction_basis` | `volume` (default): the fraction parameters are volume shares of the solid. `mass`: they are mass shares, e.g. the base model's mass percentages; they are converted to volume shares with each mineral's density. Needs `normalize_mineral_fractions = true`. |
 
 ### `[parameter.<name>]`
 
@@ -209,7 +210,7 @@ One section per kinetic mineral in the template.
 
 | Key | Meaning |
 |---|---|
-| `fraction_parameter` | The `[parameter.*]` holding this mineral's volume fraction of the solid. |
+| `fraction_parameter` | The `[parameter.*]` holding this mineral's share of the solid (by volume or mass, see `mineral_fraction_basis`). |
 | `moles_placeholder`, `area_placeholder` | Template placeholders for its initial moles and reactive surface area. |
 | `diameter_m` | Grain diameter (m). |
 | `density_kg_m3` | Density (kg/m³). |
@@ -230,7 +231,10 @@ These placeholders are filled from the parameters above, not from a
 | mineral moles | `mass / molar_mass × reactive_fraction × moles_multiplier` |
 | mineral area | `6 / diameter × mass / density × reactive_fraction × area_multiplier` (m²) |
 
-Here `mass = density × volume_m3 × (1 − porosity) × fraction`. All values are
+Here `mass = density × volume_m3 × (1 − porosity) × fraction`, with
+`fraction` the mineral's volume fraction of the solid. With
+`mineral_fraction_basis = mass`, the volume fractions are first computed
+from the mass shares `w`: `(w / density)` of each mineral, scaled to sum to 1. All values are
 written in scientific notation with four decimals (e.g. `1.2345e-03`).
 
 ### `[checks]`
