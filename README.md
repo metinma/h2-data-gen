@@ -104,7 +104,7 @@ models/<name>/runs/<timestamp>/
   - *Flagged and Failed Runs*: grouped by reason, with a count and the run
     numbers.
   - *Simulations*: one line per run with its status, runtime, varied
-    parameters and the mineral volume fractions after scaling. These are the
+    parameters and the mineral mass and volume fractions after scaling. These are the
     values not in the input files.
   - *Output Columns*: the columns of the output files.
 
@@ -165,7 +165,6 @@ still used scipy.
 | Key | Meaning |
 |---|---|
 | `cushion_gas` | The cushion gas, which takes the rest of the total pressure: `CH4` or `N2` in the current models (`CO2` and `H2S` also work). |
-| `mineral_fraction_basis` | `volume` (default): the fraction parameters are volume shares of the solid. `mass`: they are mass shares, e.g. the base model's mass percentages; they are converted to volume shares with each mineral's density. Either way the shares of each sample are scaled to sum to 1. |
 
 The rest is fixed for every model: a 1 m³ REV, UTF-8 templates, and the
 total and H2 pressures read from the template's GAS_PHASE (the `-pressure`
@@ -197,7 +196,7 @@ the cushion gas and the mineral amounts from them:
 | `porosity` | Pore volume, and the solid volume for the minerals. |
 | `water_fraction` | Share of the pore volume filled with water. |
 | `pCO2`, `pH2S`, `pN2`, `pCH4` | Gas partial pressures, except the cushion gas, which makes up the rest. |
-| one fraction parameter per mineral | Named by `fraction_parameter` in `[mineral.*]`. |
+| one mass-percentage parameter per mineral | Named by `fraction_parameter` in `[mineral.*]`. |
 
 ### `[mineral.<name>]`
 
@@ -205,7 +204,7 @@ One section per kinetic mineral in the template.
 
 | Key | Meaning |
 |---|---|
-| `fraction_parameter` | The `[parameter.*]` holding this mineral's share of the solid (by volume or mass, see `mineral_fraction_basis`). |
+| `fraction_parameter` | The `[parameter.*]` holding this mineral's mass percentage of the solid. |
 | `moles_placeholder`, `area_placeholder` | Template placeholders for its initial moles and reactive surface area. |
 | `diameter_m` | Grain diameter (m). |
 | `density_kg_m3` | Density (kg/m³). |
@@ -227,9 +226,8 @@ These placeholders are filled from the parameters above, not from a
 | mineral area | `6 / diameter × mass / density × reactive_fraction × area_multiplier` (m²) |
 
 Here `mass = density × 1 m³ × (1 − porosity) × fraction`, with
-`fraction` the mineral's volume fraction of the solid. With
-`mineral_fraction_basis = mass`, the volume fractions are first computed
-from the mass shares `w`: `(w / density)` of each mineral, scaled to sum to 1. All values are
+`fraction` the mineral's volume fraction of the solid, computed from the
+mass percentages `w`: `w / density` of each mineral, scaled to sum to 1. All values are
 written in scientific notation with four decimals (e.g. `1.2345e-03`).
 
 ### `[checks]`
