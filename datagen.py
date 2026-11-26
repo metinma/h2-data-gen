@@ -97,7 +97,6 @@ def load_config(path):
             "input_file": items(out["input_file"]),
             "drop_columns": items(out["drop_columns"]),
             "include_flagged": out.getboolean("include_flagged"),
-            "keep_initial_row": out.getboolean("keep_initial_row"),
         },
         "plot": [
             {
@@ -430,7 +429,7 @@ def work(task):
         res["status"] = "flagged" if issues else "success"
         res["message"] = "; ".join(issues)
         res["headers"] = headers
-        res["data"] = data if _W["keep_initial_row"] else kinetic
+        res["data"] = data
 
         if _W["debug"]:
             plot_run(
@@ -576,8 +575,7 @@ def write_report(run_dir, cfg, meta, records, n_planned):
         + ", ".join(f"{count} {status}" for status, count in counts.items()),
     ]
 
-    stats_header = ["min", "median", "max"]
-    out += _section("Sampled Parameters (successful runs)")
+    out += _section("Parameter Ranges")
     lines = []
     for name, p in params.items():
         bounds = (
@@ -586,12 +584,9 @@ def write_report(run_dir, cfg, meta, records, n_planned):
             else ["-", "-"]
         )
         lines.append([name, p["distribution"], *bounds, *_stats(ok, name)])
-    out += _table(["parameter", "distribution", "low", "high", *stats_header], lines)
-
-    out += _section("Derived Values (successful runs)")
+    lines += [[k, "derived", "-", "-", *_stats(ok, k)] for k in meta["derived_keys"]]
     out += _table(
-        ["quantity", *stats_header],
-        [[k, *_stats(ok, k)] for k in meta["derived_keys"]],
+        ["parameter", "distribution", "low", "high", "min", "median", "max"], lines
     )
 
     problems = [(row, res) for row, res in records if res["status"] != "success"]
@@ -742,7 +737,6 @@ def run_model(model_dir, cfg):
         "checks": cfg["checks"],
         "end_days": end_days(template),
         "plot": cfg["plot"],
-        "keep_initial_row": cfg["output"]["keep_initial_row"],
         "encoding": ENCODING,
     }
     usable = (
