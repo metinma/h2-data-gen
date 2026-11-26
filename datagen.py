@@ -575,8 +575,7 @@ def write_report(run_dir, cfg, meta, records, n_planned):
         + ", ".join(f"{count} {status}" for status, count in counts.items()),
     ]
 
-    stats_header = ["min", "median", "max"]
-    out += _section("Sampled Parameters (successful runs)")
+    out += _section("Parameter Ranges")
     lines = []
     for name, p in params.items():
         bounds = (
@@ -585,12 +584,9 @@ def write_report(run_dir, cfg, meta, records, n_planned):
             else ["-", "-"]
         )
         lines.append([name, p["distribution"], *bounds, *_stats(ok, name)])
-    out += _table(["parameter", "distribution", "low", "high", *stats_header], lines)
-
-    out += _section("Derived Values (successful runs)")
+    lines += [[k, "derived", "-", "-", *_stats(ok, k)] for k in meta["derived_keys"]]
     out += _table(
-        ["quantity", *stats_header],
-        [[k, *_stats(ok, k)] for k in meta["derived_keys"]],
+        ["parameter", "distribution", "low", "high", "min", "median", "max"], lines
     )
 
     problems = [(row, res) for row, res in records if res["status"] != "success"]

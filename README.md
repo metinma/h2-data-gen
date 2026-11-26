@@ -97,10 +97,9 @@ models/<name>/runs/<timestamp>/
 - **`report.txt`** has these sections:
   - *Run*: template, PHREEQC version, database, seed, start and finish
     time, and counts by status.
-  - *Sampled Parameters*: each parameter's distribution and bounds, and its
+  - *Parameter Ranges*: one table of the sampled parameters (distribution
+    and bounds) and the derived values (`derived`), each with its
     min / median / max over the successful runs.
-  - *Derived Values*: min / median / max of the derived values over the
-    successful runs.
   - *Flagged and Failed Runs*: grouped by reason, with a count and the run
     numbers.
 
