@@ -8,7 +8,7 @@
 # This gives the initial moles and surface areas (scales linearly with M_"rock" and inversely with d_i):
 # Mineral	     Mass (kg)	Moles	Surface area (m²)
 # Calcite (100 %)		  0.499	        1.1
-# Total		
+# Total	—	
 #############################################
 # 0) Extend database for acetate & formate
 #############################################

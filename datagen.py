@@ -586,7 +586,7 @@ def write_report(run_dir, cfg, meta, records, n_planned):
         f"Sampling        => Latin hypercube, seed {meta['seed']}",
         f"Workers         => {cfg['run']['workers']}",
         f"Timeout         => {cfg['run']['timeout_s']} s",
-        f"Gas             => {m['total_pressure_atm']} atm total, ",
+        f"Gas             => {m['total_pressure_atm']} atm total, "
         f"H2 {m['h2_pressure_atm']} atm, cushion gas {m['cushion_gas']}",
         f"Smoke test      => {meta['smoke']}",
         f"Simulations     => {len(records)} of {n_planned} finished",
