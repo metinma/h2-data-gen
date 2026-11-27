@@ -327,7 +327,11 @@ def init_worker(settings):
 
 def run_phreeqc(text, tag):
     logs = Path(_W["run_dir"]) / "logs"
-    with tempfile.TemporaryDirectory() as tmp:
+    # The folder is removed with errors ignored: on Windows a PHREEQC process
+    # killed at the timeout can still hold its files, and the failed removal
+    # would otherwise replace the timeout with a PermissionError.
+    tmp = tempfile.mkdtemp(prefix="datagen_")
+    try:
         pqi, pqo = os.path.join(tmp, "model.pqi"), os.path.join(tmp, "model.pqo")
         Path(pqi).write_text(text, encoding=_W["encoding"])
         if _W["debug"]:
@@ -367,6 +371,8 @@ def run_phreeqc(text, tag):
             Path(tmp, "selected_output_1.sel").read_text(encoding=_W["encoding"]),
             version.group(1) if version else None,
         )
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def first_step(time_column):
