@@ -1,3 +1,4 @@
+import argparse
 import configparser
 import logging
 import os
@@ -307,12 +308,14 @@ def render(template, reps):
     return template
 
 
-def end_days(template):
-    """Total kinetic time from the '-steps <seconds> in <n>' line, in days."""
-    return (
-        float(re.search(r"^\s*-steps\s+([0-9.eE+]+)", template, re.MULTILINE).group(1))
-        / 86400.0
+def kinetic_steps(template):
+    """Total time (days) and number of steps from '-steps <seconds> in <n>'."""
+    found = re.search(
+        r"^\s*-steps\s+([0-9.eE+]+)\s+in\s+([0-9]+)", template, re.MULTILINE
     )
+    if not found:
+        raise ValueError('template has no "-steps <seconds> in <n>" line')
+    return float(found.group(1)) / 86400.0, int(found.group(2))
 
 
 _W = {}
@@ -324,7 +327,11 @@ def init_worker(settings):
 
 def run_phreeqc(text, tag):
     logs = Path(_W["run_dir"]) / "logs"
-    with tempfile.TemporaryDirectory() as tmp:
+    # The folder is removed with errors ignored: on Windows a PHREEQC process
+    # killed at the timeout can still hold its files, and the failed removal
+    # would otherwise replace the timeout with a PermissionError.
+    tmp = tempfile.mkdtemp(prefix="datagen_")
+    try:
         pqi, pqo = os.path.join(tmp, "model.pqi"), os.path.join(tmp, "model.pqo")
         Path(pqi).write_text(text, encoding=_W["encoding"])
         if _W["debug"]:
@@ -364,6 +371,8 @@ def run_phreeqc(text, tag):
             Path(tmp, "selected_output_1.sel").read_text(encoding=_W["encoding"]),
             version.group(1) if version else None,
         )
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def first_step(time_column):
@@ -428,7 +437,13 @@ def work(task):
                 f"stopped early at {t[-1]:.2f} of {_W['end_days']:.2f} d"
             )
 
-        kinetic = data[first_step(t) :]
+        start = first_step(t)
+        if start != 1 or len(data) != _W["n_steps"] + 1:
+            raise SimulationError(
+                f"{len(data)} rows ({start} at t = 0), expected "
+                f"{_W['n_steps'] + 1} (1 at t = 0 and {_W['n_steps']} steps)"
+            )
+        kinetic = data[start:]
         issues = quality_issues(col, kinetic)
         res["status"] = "flagged" if issues else "success"
         res["message"] = "; ".join(issues)
@@ -699,15 +714,17 @@ def run_batch(run_dir, cfg, settings, meta, rows, tasks, usable):
     return records
 
 
-def run_model(model_dir, cfg):
-    """Sample, run and save one model."""
+def run_model(model_dir, cfg, seed=None):
+    """Sample, run and save one model. A random seed unless one is given."""
     run = cfg["run"]
     model_path = model_dir / f"{model_dir.name}.phr"
     template = model_path.read_text(encoding=ENCODING)
     cfg["model"].update(gas_pressures(template))
+    end_days, n_steps = kinetic_steps(template)
     n = run["n_simulations"]
 
-    seed = int(np.random.SeedSequence().entropy % 2**32)
+    if seed is None:
+        seed = int(np.random.SeedSequence().entropy % 2**32)
     rows = draw_samples(cfg, seed)
 
     stamp = now()
@@ -739,7 +756,8 @@ def run_model(model_dir, cfg):
         "debug": run["debug"],
         "run_dir": str(run_dir),
         "checks": cfg["checks"],
-        "end_days": end_days(template),
+        "end_days": end_days,
+        "n_steps": n_steps,
         "plot": cfg["plot"],
         "encoding": ENCODING,
     }
@@ -768,12 +786,23 @@ def run_model(model_dir, cfg):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Run every enabled model in models/.")
+    parser.add_argument(
+        "--seed",
+        type=int,
+        help="sampling seed for every enabled model (default: a new random seed); "
+        "the seed of a run is in its report.txt",
+    )
+    args = parser.parse_args()
+    if args.seed is not None and not 0 <= args.seed < 2**32:
+        parser.error("--seed must be between 0 and 4294967295")
+
     model_dirs = sorted(d for d in MODELS_DIR.iterdir() if (d / "config.cfg").is_file())
     results = {}
     for model_dir in model_dirs:
         cfg = load_config(model_dir / "config.cfg")
         if cfg["run"]["enabled"]:
-            run_model(model_dir, cfg)
+            run_model(model_dir, cfg, args.seed)
             results[model_dir.name] = "done"
         else:
             results[model_dir.name] = "disabled"

@@ -28,6 +28,15 @@ model after another. At the end it prints one line per model: `done` or
 
 To run only some models, set `enabled = false` in the others.
 
+Each model draws its samples from a new random seed, written to its
+`report.txt`. To draw the same samples again, pass that seed:
+
+```bash
+python datagen.py --seed 123456789
+```
+
+The seed applies to every enabled model; the configs need no change.
+
 ## Repository layout
 
 ```
@@ -114,7 +123,7 @@ Every simulation ends in one of four states:
 |---|---|---|
 | `success` | Ran to the end and passed every check | `output/` |
 | `flagged` | Ran to the end but failed a check in `[checks]` | `failed/` (or `output/` with `include_flagged = true`) |
-| `failed` | PHREEQC reported an error, exited abnormally or stopped early | `failed/` |
+| `failed` | PHREEQC reported an error, exited abnormally, stopped early, or did not write one row at t = 0 plus one per kinetic step | `failed/` |
 | `timeout` | Took longer than `timeout_s` | `failed/` |
 
 `report.txt` groups the runs that aren't `success` by reason.
