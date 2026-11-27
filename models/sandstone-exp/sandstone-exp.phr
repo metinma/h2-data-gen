@@ -63,7 +63,6 @@ SOLUTION 1 Haymana baslangic sentetik akifer suyu
     temp       {TEMPERATURE}
     pressure   1
     units      mol/kgw  # experiment (mg/L): Ca 4.11, Mg 40.10, Na 226.40, SO4 8.80, HCO3 146.40
-    pH         8
     Ca         {CA}
     Mg         {MG}
     Na         {NA}
@@ -246,7 +245,7 @@ Chlorite(14A)
 # numerical solver ----------------------------------
  -cvode true  # that can be Runge Kutta based on the stiffness of the problem
  -tol 1e-8 # relative tolerance enough can be decreased
--steps 3456000 in 200 # 40 days  # if you need stiff calculation for ODE, but this one is optimal for the moment
+-steps 15552000 in 300 # 6 months  # if you need stiff calculation for ODE, but this one is optimal for the moment
 INCREMENTAL_REACTIONS true # this one helps convergence at each time step for equilibrium for the reaction kinetics
 REACTION_TEMPERATURE 1
 {TEMPERATURE}
@@ -825,55 +824,18 @@ SELECTED_OUTPUT
  -high_precision true
  -user_punch true
 USER_PUNCH
--headings time_d pH Ptot_atm H2_cmol N2_cmol CO2_cmol CH4_cmol \
-          H2N2_ratio H2_g_mol N2_g_mol CO2_g_mol CH4_g_mol \
-          Ca_mgL Mg_mgL Na_mgL SO4_mgL Alk_HCO3_mgL \
-          SI_Quartz SI_Calcite SI_Albite SI_Kfeld Quartz_mol Calcite_mol Albite_mol Kfeld_mol Montmor_mol \
-          NaX_mol MgX2_mol CaX2_mol KX_mol Xfree_mol \
-          Chlorite_mol X_SRB_mol X_IRB_mol SR_H2 IR_H2 H2S_g_mol Water_kg
-
+ -headings time_d pH Ptot_atm pH2_atm pCO2_atm pCH4_atm H2_g_mol CO2_g_mol CH4_g_mol SO4_mol Formate Acetate Ca_mol Fe_mol X_SRB_mol X_IRB_mol X_SRB_mol_per_L Fe(OH)3 SR_H2 SR_FOR SR_AC IR_H2 IR_AC IR_FOR Water_VOL Gas_VOL HS-_mol HCO3_mol Na_tot Mg_tot Cl_tot Ca_tot S6_tot \
+           N2_g_mol H2S_g_mol SI_Quartz SI_Calcite SI_Albite SI_Kfeld Quartz_mol Calcite_mol Albite_mol Kfeld_mol Montmor_mol Chlorite_mol NaX_mol MgX2_mol CaX2_mol KX_mol Xfree_mol
 -start
-
- 10 td = TOTAL_TIME/86400.0
-
- 20 nH2  = GAS("Hdg(g)")
- 30 nN2  = GAS("Ntg(g)")
- 40 nCO2 = GAS("CO2(g)")
- 50 nCH4 = GAS("Mtg(g)")
- 60 nH2S = GAS("H2S(g)")
-
- 70 ngas = nH2 + nN2 + nCO2 + nCH4 + nH2S
-
- 80 IF (ngas <= 0) THEN ngas = 1e-30
-
- 90 yH2  = 100*nH2/ngas
-100 yN2  = 100*nN2/ngas
-110 yCO2 = 100*nCO2/ngas
-120 yCH4 = 100*nCH4/ngas
-
-130 IF (yN2 > 0) THEN ratio = yH2/yN2
-140 IF (yN2 <= 0) THEN ratio = 0
-
-150 Ptot = PR_P("Hdg(g)") + PR_P("Ntg(g)") + \
-           PR_P("CO2(g)") + PR_P("Mtg(g)") + PR_P("H2S(g)")
-
-# mol/kgw -> mg/L yaklasik d n s mleri
-160 Ca_mg  = TOT("Ca")*40.078*1000
-170 Mg_mg  = TOT("Mg")*24.305*1000
-180 Na_mg  = TOT("Na")*22.9898*1000
-190 SO4_mg = TOT("S(6)")*96.06*1000
-
-# Toplam alkaliniteyi HCO3 esdegeri olarak yaklasik g sterim
-200 Alk_mg = MOL("HCO3-")*61.01*1000
-
-210 PUNCH td, -LA("H+"), Ptot, \
-           yH2, yN2, yCO2, yCH4, ratio, \
-           nH2, nN2, nCO2, nCH4, \
-           Ca_mg, Mg_mg, Na_mg, SO4_mg, Alk_mg, \
-           SI("Quartz"), SI("Calcite"), SI("Albite"), SI("K-feldspar"), \
-           KIN("Quartz"), KIN("Calcite"), KIN("Albite"), KIN("K-feldspar"), KIN("Montmor-Na"), \
-           MOL("NaX"), MOL("MgX2"), MOL("CaX2"), MOL("KX"), MOL("X-"), \
-           KIN("Chlorite(14A)"), KIN("X_SRB"), KIN("X_IRB"), KIN("SR_H2"), KIN("IR_H2"), nH2S, TOT("water")
+10 t_d = TOTAL_TIME/86400.0
+20 x_srb   = KIN("X_SRB")
+30 x_irb   = KIN("X_IRB")
+40 x_srb_L = x_srb / SOLN_VOL
+50 Ptot = PR_P("CO2(g)") + PR_P("Mtg(g)") + PR_P("Hdg(g)") + PR_P("H2S(g)") + PR_P("Ntg(g)")
+55 n_gas = GAS("Hdg(g)") + GAS("CO2(g)") + GAS("Mtg(g)") + GAS("Ntg(g)") + GAS("H2S(g)")
+56 Vgas_L = n_gas * GAS_VM
+60 PUNCH t_d, -LA("H+"), Ptot, PR_P("Hdg(g)"), PR_P("CO2(g)"), PR_P("Mtg(g)"), GAS("Hdg(g)"), GAS("CO2(g)"), GAS("Mtg(g)"), TOT("S(6)"), TOT("Formate"), TOT("Acetate"), TOT("Ca"), TOT("Fe(2)"), x_srb, x_irb, x_srb_L, EQUI("Fe(OH)3(a)"), KIN("SR_H2"), KIN("SR_FOR"), KIN("SR_AC"), KIN("IR_H2"), KIN("IR_AC"), KIN("IR_FOR"), SOLN_VOL, Vgas_L, MOL("HS-"), MOL("HCO3-"), TOT("Na"), TOT("Mg"), TOT("Cl"), TOT("Ca"), TOT("S(6)")
+70 PUNCH GAS("Ntg(g)"), GAS("H2S(g)"), SI("Quartz"), SI("Calcite"), SI("Albite"), SI("K-feldspar"), KIN("Quartz"), KIN("Calcite"), KIN("Albite"), KIN("K-feldspar"), KIN("Montmor-Na"), KIN("Chlorite(14A)"), MOL("NaX"), MOL("MgX2"), MOL("CaX2"), MOL("KX"), MOL("X-")
 -end
 
 

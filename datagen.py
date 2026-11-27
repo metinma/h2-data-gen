@@ -290,6 +290,10 @@ def replacements(s, d, cfg):
     )
     cushion = cfg["model"]["cushion_gas"]
     reps[f"{{{cushion}}}"] = f"{d[f'p{cushion}']:.4e}"
+    # Not template placeholders: listed in input_file so that every input
+    # file also records the starting H2 pressure and the porosity.
+    reps["{H2}"] = f"{cfg['model']['h2_pressure_atm']:.4e}"
+    reps["{POROSITY}"] = f"{s['porosity']:.4e}"
     for mineral in cfg["minerals"]:
         name = mineral["name"]
         reps[mineral["moles_placeholder"]] = f"{d[f'{name}_moles']:.4e}"

@@ -85,6 +85,9 @@ models/<name>/runs/<timestamp>/
 
 - **Input files** have one `{PLACEHOLDER} value` line per entry of
   `input_file` in `[output]`. The values are the exact text PHREEQC was given.
+  Two entries are not template placeholders and are always available for
+  `input_file`: `{H2}`, the starting H2 pressure read from the template, and
+  `{POROSITY}`.
 - **Output files** are tab-separated, with a header line, PHREEQC's t = 0
   initial-solution row and one row per kinetic step. The columns are the
   template's `USER_PUNCH -headings`, minus any in `drop_columns`. The plots
