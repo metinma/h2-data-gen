@@ -32,7 +32,6 @@ SOLUTION 1 # Midyat baslangiç sentetik akifer suyu
     temp       {TEMPERATURE}
     pressure   1
     units      mol/kgw  # base (mg/L): Ca 22.67, Mg 21.89, Na 129.30, SO4 218.80, HCO3 122.00
-    pH         7.65 
     Ca         {CA}
     Mg         {MG}
     Na         {NA}
@@ -182,7 +181,7 @@ X_IRB
 # numerical solver ----------------------------------
  -cvode true  # that can be Runge Kutta based on the stiffness of the problem
  -tol 1e-8 # relative tolerance enough can be decreased
--steps 3456000 in 200 # 40 days  # if you need stiff calculation for ODE, but this one is optimal for the moment
+-steps 15552000 in 300 # 6 months  # if you need stiff calculation for ODE, but this one is optimal for the moment
 INCREMENTAL_REACTIONS true # this one helps convergence at each time step for equilibrium for the reaction kinetics
 REACTION_TEMPERATURE 1
 {TEMPERATURE}
